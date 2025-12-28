@@ -1,0 +1,1 @@
+from .kuairand import KuaiRand

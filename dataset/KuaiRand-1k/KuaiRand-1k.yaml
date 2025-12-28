@@ -1,0 +1,104 @@
+# =========================================================
+#  KuaiRand-1k Dataset Configuration for RecBole (MMoE)
+# =========================================================
+
+# 1. 基础路径配置
+# ---------------------------------------------------------
+# 数据集存放的根目录 (RecBole 会自动寻找 dataset/KuaiRand-1k/)
+data_path: dataset/
+# 数据集名称 (必须与文件夹名、文件前缀完全一致)
+dataset: KuaiRand-1k
+
+# 2. 文件格式配置
+# ---------------------------------------------------------
+# 列分隔符 (因为我们转换脚本里用了 sep='\t')
+field_separator: "\t"
+# 序列分隔符 (如果你有 :token_seq 类型的列，且内部用空格分隔)
+seq_separator: " "
+
+# 3. 核心字段映射
+# ---------------------------------------------------------
+# 告诉 RecBole 哪一列是 ID，哪一列是 Label
+USER_ID_FIELD: user_id
+ITEM_ID_FIELD: video_id
+LABEL_FIELD: label
+
+# 4. 加载列配置 (Load Columns) - 最关键部分！
+# ---------------------------------------------------------
+# 这里决定了哪些特征会被喂给 MMoE 模型。
+# 格式为 {文件类型: [列名1, 列名2, ...]}
+# 注意：列名必须与文件第一行 Header 一致 (不带 :token/:float 后缀)
+load_col:
+    inter:
+        - user_id
+        - video_id
+        - label
+        - duration_ms
+        - tab
+        - day_of_week
+        - hour
+        - is_weekend
+    user:
+        - user_id
+        - user_active_degree
+        - is_live_streamer
+        - is_video_author
+        - follow_user_num_range
+        - fans_user_num_range
+        - friend_user_num_range
+        - register_days_range
+        - onehot_feat0
+        - onehot_feat1
+        - onehot_feat2
+        - onehot_feat3
+        - onehot_feat4
+        - onehot_feat5
+        - onehot_feat6
+        - onehot_feat7
+        - onehot_feat8
+        - onehot_feat9
+        - onehot_feat10
+        - onehot_feat11
+        - onehot_feat12
+        - onehot_feat13
+        - onehot_feat14
+    item:
+        - video_id
+        - video_type
+        - upload_type
+        - visible_status
+        - music_type
+#        - author_id
+        - video_duration
+        # - tag (如果你有处理 tag 序列)
+
+# 5. 特征预处理 (可选但推荐)
+# ---------------------------------------------------------
+# MMoE 对数值特征比较敏感。
+# 这里指定哪些 float 类型的列需要做归一化 (StandardScaler)
+# 如果不写，RecBole 默认不会归一化，可能导致 loss 收敛慢
+normalize_field:
+    - duration_ms
+    - video_duration
+# 或者简单粗暴地归一化所有 float 列:
+# normalize_all: True
+
+# 6. 过滤与划分设置
+# ---------------------------------------------------------
+# 过滤掉交互少于 x 次的用户/物品 (设为 0 表示相信原始数据，不额外过滤)
+min_user_inter: 0
+min_item_inter: 20
+filter_inter_by_user_or_item: True
+# 数据集划分方式 (训练集:验证集:测试集)
+# RO = Random Ordering (随机打乱划分)
+eval_args:
+    split: {'RS': [0.8, 0.1, 0.1]}
+    group_by: null
+    order: RO
+    mode: labeled
+
+# 7. MMoE 模型特定参数 (也可以写在 Python 代码里，这里写了更方便管理)
+# ---------------------------------------------------------
+embedding_size: 64
+mlp_hidden_size: [128, 64]
+dropout_prob: 0.1
