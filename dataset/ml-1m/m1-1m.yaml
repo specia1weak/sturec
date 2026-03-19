@@ -1,0 +1,18 @@
+# 1. 数据集名字（对应文件夹名和文件名）
+dataset: ml-1m
+field_separator: "\t"
+
+load_col:
+    inter: [user_id, item_id, rating, timestamp]
+    user: [user_id, age, gender, occupation]
+
+# 告诉模型：哪个列是用户ID，哪个是物品ID，哪个是标签
+USER_ID_FIELD: user_id   # 实际上都是默认值
+ITEM_ID_FIELD: item_id   # 实际上都是默认值
+RATING_FIELD: rating     # 实际上都是默认值
+TIME_FIELD: timestamp    # 实际上都是默认值
+
+# label 设置，由于只有rating
+threshold:
+    rating: 4.0
+LABEL_FIELD: label
