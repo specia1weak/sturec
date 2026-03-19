@@ -6,13 +6,10 @@ import warnings
 from enum import Enum
 from typing import Union
 
-from src.utils.singleton import Singleton
-
-
 # windows 专用，不过脚本也只能在windows上跑了
 if os.name != "nt":
     raise OSError
-LOGGER = None
+LOGGER = print
 _SPARE_TIME = 0.003 # s
 _BIAS_TIME = 0.002
 
@@ -76,53 +73,74 @@ def set_min_time(min_time):
     return decorator
 
 
-class Moment(Enum):
-    CAPTURED = 1  # 截图
-    PREPROCESSED = 2  # 图像预处理
-    INFERRED = 3  # 预测
-    EXECUTED = 4  # 执行
-    TO_EXECUTE = 5  # 执行前
+import time
+import functools
+from collections import defaultdict
 
 
-@Singleton
-class TimeRecorder:
-    def __init__(self):
-        self._recorded_moment_dict = {}
-        self._recorded_interval_dict = {}
+class NamedTimer:
+    _instance = None
 
-    def record_moment(self, key):
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(NamedTimer, cls).__new__(cls)
+            cls._instance._records = defaultdict(float)
+            cls._instance._counts = defaultdict(int)  # 新增：记录调用次数
+            cls._instance._start_times = {}
+        return cls._instance
+
+    def start_record(self, name):
+        self._start_times[name] = time.perf_counter()
+
+    def stop_record(self, name):
+        if name in self._start_times:
+            elapsed = time.perf_counter() - self._start_times.pop(name)
+            self._records[name] += elapsed
+            self._counts[name] += 1
+            return elapsed
+        return 0
+
+    # --- 核心：装饰器功能 ---
+    def collect(self, name=None):
         """
-        :param key: 时间字典key
-        :return: 上次记录的时间差
+        装饰器用法：
+        @timer.collect()
+        def my_func(): ...
         """
-        curr_time = self._get_curr_time()
-        last_time = self._recorded_moment_dict.get(key, 0.)
-        self._recorded_moment_dict[key] = curr_time
-        interval = curr_time - last_time
-        self._recorded_interval_dict[key] = interval
-        return curr_time
 
-    def get_record(self, key):
-        return self._recorded_moment_dict.get(key, 0.)
+        def decorator(func):
+            # 如果没传 name，默认用函数名
+            record_name = name if name else func.__name__
 
-    def calculate_same_key_record_interval(self, key):
-        """
-        记录上一次record和上上次record的时间差，注意必须要保证调用这个函数前使用了record
-        """
-        return self._recorded_interval_dict.get(key, 0.)
+            @functools.wraps(func)
+            def wrapper(*args, **kwargs):
+                self.start_record(record_name)
+                result = func(*args, **kwargs)
+                self.stop_record(record_name)
+                return result
 
-    def calculate_different_records_interval(self, key1, key2):
-        return self.get_record(key2) - self.get_record(key1)
+            return wrapper
 
-    def _get_curr_time(self):
-        return time.perf_counter()
+        return decorator
 
-if __name__ == "__main__":
-    @timer
-    def test():
-        very_high_precision_sleep(0.015)
-    test()
-    # for _ in range(100000):
-    #     st = time.perf_counter()
-    #     high_precision_sleep(0.002)
-    #     print(time.perf_counter() - st)
+    # --- 之前的 Context Manager 支持 ---
+    def __call__(self, name):
+        self._temp_name = name
+        return self
+
+    def __enter__(self):
+        self.start_record(self._temp_name)
+        return self
+
+    def __exit__(self, *args):
+        self.stop_record(self._temp_name)
+
+    def report(self):
+        print(f"\n{'[ Timer Report ]':^40}")
+        print(f"{'Name':<20} | {'Total':>8} | {'Avg':>8} | {'Calls':>5}")
+        print("-" * 45)
+        for name in self._records:
+            total = self._records[name]
+            count = self._counts[name]
+            avg = total / count if count > 0 else 0
+            print(f"{name:<20} | {total:>7.4f}s | {avg:>7.4f}s | {count:>5}")

@@ -307,8 +307,18 @@ class AmazonCrossDomainLoader:
     def export_to_recbole_format(self, df_type='inter', to_csv_path=None):
         if df_type == 'inter':
             df = self.union_df_inter.copy()
-            df['rating'] = (df['rating'] >= 3).astype(int)
-            self.merged_field_types['rating'] = 'float'
+            if 'rating' in df.columns:
+                print(f"[Export] 正在执行过滤策略 (保留 Rating >= 4)...")
+                original_len = len(df)
+                df = df[df['rating'] >= 4].copy()
+                df['label'] = 1.0
+                df.drop(columns=['rating'], inplace=True)
+                print(f"[Export] 过滤完成: {original_len} -> {len(df)} (保留率: {len(df) / original_len:.2%})")
+                # 4. 更新类型映射 (让表头变成 label:float 而不是 rating:float)
+                self.merged_field_types['label'] = 'float'
+                # 如果字典里有 rating，把它删掉，防止报错或多余映射
+                if 'rating' in self.merged_field_types:
+                    del self.merged_field_types['rating']
         elif df_type == 'item':
             df = self.union_df_item.copy()
         else:

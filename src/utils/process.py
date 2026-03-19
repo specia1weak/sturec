@@ -41,8 +41,3 @@ def get_idle_cpus(nums, groups=1, exclude_cpus: Iterable=None):
     idle_cpus = [x[0] for x in load_rank if x[0] not in exclude_cpus]
     idle_cpus = idle_cpus[-nums*groups: ]
     return [idle_cpus[i:i + nums] for i in range(0, len(idle_cpus), nums)]
-
-
-def set_affinity(pid, cpus):
-    process = psutil.Process(pid)
-    process.cpu_affinity(cpus)

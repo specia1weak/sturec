@@ -14,8 +14,12 @@ if __name__ == '__main__':
             "order": 'TO',
             "mode": 'full'
         },
+        "val_interval": {
+            "rating": '[4.0, 5.0]'
+        },
         # ===== 新增这一行 =====
         "train_neg_sample_args": None  # 明确告诉框架：CE 损失不需要训练负采样
+
     }
 
     config = Config(

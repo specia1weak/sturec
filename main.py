@@ -1,36 +1,65 @@
-from recbole.config import Config
-from recbole.data import create_dataset, data_preparation
-from torch.utils.data import Dataset
-# 1. 准备配置
-# 可以在这里通过 props 字典直接覆盖 yaml 里的配置
-# model='DeepFM' 只是占位，读取数据阶段不强依赖特定模型，但在做 data_preparation 时可能会用到模型的特定要求
-config = Config(model='DeepFM', dataset='test', config_file_list=["dataset/test.yaml"], config_dict={
-    'data_path': './dataset/', # 指定数据根目录，默认就是当前目录下的 dataset
-    'field_separator': ',',    # 如果你的 inter 文件是逗号分隔
-    'load_col': {              # 再次确认要加载的列
-        'inter': ['user_id', 'item_id', 'rating', 'timestamp', 'scene_id'] # 假设你有多场景ID
-    },
-    'USER_ID_FIELD': 'user_id',
-    'ITEM_ID_FIELD': 'item_id',
-    'RATING_FIELD': 'rating'
-})
+import torch
+from torch import optim
 
-# 2. 核心步骤：读取数据
-# 这一步会自动完成：加载文件 -> ID映射(Remap) -> 过滤稀疏数据
-dataset = create_dataset(config)
+from torch.utils.data import DataLoader
 
-# 3. 验证数据是否读进去了
-print(f"数据读取成功！")
-print(f"用户数: {dataset.user_num}")
-print(f"物品数: {dataset.item_num}")
-print(f"交互总数: {len(dataset)}")
+from src.dataset.amazon import AmazonMTLDataset, load_and_split_data
+from src.model.ple import PLEFramework, evaluate_model, train_one_epoch
 
-# 4. 查看具体数据 (比如看前 5 行)
-print(dataset.inter_feat[:5])
-# 5. 生成 DataLoader (切分训练/验证/测试集)
-# 这一步会根据 config 里的 eval_args 切分数据
-train_data, valid_data, test_data = data_preparation(config, dataset)
+import torch.optim as optim
 
-# 接下来就可以把 train_data 喂给模型了
-for batch in train_data:
-    print(batch)
+
+def main():
+    INTER_FILE = "dataset/Amazon-5core/amazon.inter"
+    BATCH_SIZE = 1024
+    DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    try:
+        # 1. 使用时序切分加载数据
+        train_ds, valid_ds, test_ds, domain_item_dict = load_and_split_data(INTER_FILE)
+        
+        # 将 Candidate Set 搬运到 GPU
+        domain_item_dict = {k: v.to(DEVICE) for k, v in domain_item_dict.items()}
+
+        # 2. DataLoader
+        train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True)
+        # 验证/测试集不需要 shuffle
+        valid_loader = DataLoader(valid_ds, batch_size=BATCH_SIZE, shuffle=False)
+        test_loader = DataLoader(test_ds, batch_size=BATCH_SIZE, shuffle=False)
+
+        # 3. 初始化模型 (使用 Train 集的统计数据)
+        model = PLEFramework(
+            n_users=train_ds.n_users,
+            n_items=train_ds.n_items
+        ).to(DEVICE)
+
+        optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+        # 4. 训练循环
+        print(f"Start training on {DEVICE}...")
+        for epoch in range(5):
+            # Train
+            train_loss = train_one_epoch(model, train_loader, optimizer, DEVICE, domain_item_dict)
+
+            # Evaluate on Valid (用验证集调优)
+            val_metrics = evaluate_model(model, valid_loader, valid_ds.n_items, DEVICE, domain_item_dict)
+
+            print(f"-" * 40)
+            print(f"Epoch {epoch + 1} | Train Loss: {train_loss:.5f}")
+            print(f"   [Valid] Book  AUC: {val_metrics['Book']['AUC']:.4f} | HR@10: {val_metrics['Book']['HR@10']:.4f} | NDCG@10: {val_metrics['Book']['NDCG@10']:.4f}")
+            print(f"   [Valid] Movie AUC: {val_metrics['Movie']['AUC']:.4f} | HR@10: {val_metrics['Movie']['HR@10']:.4f} | NDCG@10: {val_metrics['Movie']['NDCG@10']:.4f}")
+
+        # 5. 最后测试 (Evaluate on Test)
+        print("=" * 40)
+        print("Final Testing...")
+        test_metrics = evaluate_model(model, test_loader, valid_ds.n_items, DEVICE, domain_item_dict)
+        print(f"   [Test ] Book  AUC: {test_metrics['Book']['AUC']:.4f} | HR@10: {test_metrics['Book']['HR@10']:.4f} | NDCG@10: {test_metrics['Book']['NDCG@10']:.4f}")
+        print(f"   [Test ] Movie AUC: {test_metrics['Movie']['AUC']:.4f} | HR@10: {test_metrics['Movie']['HR@10']:.4f} | NDCG@10: {test_metrics['Movie']['NDCG@10']:.4f}")
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+
+
+if __name__ == '__main__':
+    main()
