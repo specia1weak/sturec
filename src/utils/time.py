@@ -73,10 +73,9 @@ def set_min_time(min_time):
     return decorator
 
 
-import time
 import functools
+import contextlib  # <--- 新增导入
 from collections import defaultdict
-
 
 class NamedTimer:
     _instance = None
@@ -85,7 +84,7 @@ class NamedTimer:
         if cls._instance is None:
             cls._instance = super(NamedTimer, cls).__new__(cls)
             cls._instance._records = defaultdict(float)
-            cls._instance._counts = defaultdict(int)  # 新增：记录调用次数
+            cls._instance._counts = defaultdict(int)
             cls._instance._start_times = {}
         return cls._instance
 
@@ -100,40 +99,30 @@ class NamedTimer:
             return elapsed
         return 0
 
-    # --- 核心：装饰器功能 ---
+    def loop_flag(self, name):
+        self.stop_record(name)
+        self.start_record(name)
+
     def collect(self, name=None):
-        """
-        装饰器用法：
-        @timer.collect()
-        def my_func(): ...
-        """
-
         def decorator(func):
-            # 如果没传 name，默认用函数名
             record_name = name if name else func.__name__
-
             @functools.wraps(func)
             def wrapper(*args, **kwargs):
                 self.start_record(record_name)
                 result = func(*args, **kwargs)
                 self.stop_record(record_name)
                 return result
-
             return wrapper
-
         return decorator
 
-    # --- 之前的 Context Manager 支持 ---
+    # --- 修复点：使用 contextmanager 替代原来的 __call__, __enter__, __exit__ ---
+    @contextlib.contextmanager
     def __call__(self, name):
-        self._temp_name = name
-        return self
-
-    def __enter__(self):
-        self.start_record(self._temp_name)
-        return self
-
-    def __exit__(self, *args):
-        self.stop_record(self._temp_name)
+        self.start_record(name)
+        try:
+            yield self  # 允许 with ntr("name") as t: 的语法
+        finally:
+            self.stop_record(name)
 
     def report(self):
         print(f"\n{'[ Timer Report ]':^40}")
@@ -144,3 +133,27 @@ class NamedTimer:
             count = self._counts[name]
             avg = total / count if count > 0 else 0
             print(f"{name:<20} | {total:>7.4f}s | {avg:>7.4f}s | {count:>5}")
+
+try:
+    import torch
+    HAS_TORCH = True
+except ImportError:
+    HAS_TORCH = False
+
+if HAS_TORCH:
+    class CudaNamedTimer(NamedTimer):
+        def start_record(self, name):
+            # 只有在 GPU 可用时才同步，避免在只有 CPU 的 torch 环境下报错
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+            super().start_record(name)
+
+        def stop_record(self, name):
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+            return super().stop_record(name)
+else:
+    # 如果没有 torch，CudaNamedTimer 就退化为普通的 NamedTimer
+    # 这样业务代码里写 CudaNamedTimer() 也不会崩，只是没有同步功能
+    class CudaNamedTimer(NamedTimer):
+        pass

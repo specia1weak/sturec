@@ -34,7 +34,7 @@ ENV/
 # *.ipynb filter=nbstripout
 
 # === 5. 数据与模型权重（只保留路径占位） ===
-data/
+/data/
 !data/.gitkeep
 datasets/
 !datasets/.gitkeep
@@ -101,9 +101,12 @@ docker-compose.override.yml
 *.inter
 *.item
 *.user
+*.png
+*.jpg
 
 # 2. RecBole 默认输出目录（可酌情保留空目录）
-recbole_log/
-saved/
-log/
+/dataset/
+/*workdir/
+/raw/
 log_tensorboard/
+Diff-MSR-main/

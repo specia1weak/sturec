@@ -2,14 +2,10 @@ from pathlib import Path
 from typing import Sequence, Tuple
 
 import pandas as pd
+from torch.backends.quantized import engine
 
 
-class KuaiRand:
-    BASE_DIR = Path("D:/pyprojects/recommend-study/Datasets/KuaiRand")
-    DATA_KUAI_1K = BASE_DIR / "data" / "KuaiRand-1K" / "data"
-    STD_LOG_FORMER_DATA = DATA_KUAI_1K / "log_standard_4_08_to_4_21_1k.csv"
-    USER_FEATURES = DATA_KUAI_1K / "user_features_1k.csv"
-    VIDEO_FEATURES = DATA_KUAI_1K / "video_features_basic_1k.csv"
+from src.dataset.kuairand import KuaiRandDataset as KuaiRand
 
 TARGET_COLUMN = "is_click"
 LOG_FEATURES = [
@@ -20,6 +16,7 @@ LOG_FEATURES = [
     "duration_ms",
     "tab",
     "is_rand",
+    "time_ms"
 ]
 
 
@@ -160,13 +157,14 @@ def convert_to_bole(dataset_name='KuaiRand-1k', output_dir='dataset/KuaiRand-1k'
     inter_rename_map = {
         'user_id': 'user_id:token',
         'video_id': 'video_id:token',
-        'is_click': 'label:float',
+        'is_click': 'is_click:float',
         'duration_ms': 'duration_ms:float',
         'tab': 'tab:token',
         'is_rand': 'is_rand:token',
         'day_of_week': 'day_of_week:token',  # 时间上下文是典型的 Token
         'is_weekend': 'is_weekend:token',
         'hour': 'hour:token',
+        'time_ms': 'time_ms:float',
         # minute 通常粒度太细，可以不放，或者分桶。这里先放着
         'minute': 'minute:token'
     }
@@ -230,3 +228,40 @@ def clean_data():
     print("-" * 30)
     print("🎉 数据清洗完成！")
     print("现在请重新运行 run-mmoe.py，参数量应该会降到几百万级别。")
+
+
+if __name__ == '__main__':
+    import polars as pl
+    from src.utils.time import NamedTimer
+    nt = NamedTimer()
+
+    with nt("pl"):
+        lf1 = pl.scan_csv(KuaiRand.USER_FEATURES)
+        lf2 = pl.scan_csv(KuaiRand.VIDEO_FEATURES)
+        lf3 = pl.scan_csv(KuaiRand.STD_LOG_FORMER_DATA)
+
+        query = (
+            lf3.join(lf1, on="user_id", how="left")
+            .join(lf2, on="video_id", how="left")
+            .group_by("tab").len().sort("tab")
+        )
+
+        res = query.collect(engine="streaming")
+        print(res)
+
+    with nt("pd"):
+        df1 = pd.read_csv(KuaiRand.USER_FEATURES)
+        df2 = pd.read_csv(KuaiRand.VIDEO_FEATURES)
+        df3 = pd.read_csv(KuaiRand.STD_LOG_FORMER_DATA)
+        df = df3.merge(df1, on="user_id", how="left")
+        df = df.merge(df2, on="video_id", how="left")
+
+        df = df.value_counts("tab")
+        df = df.sort_index(ascending=True)
+        print(df)
+
+    nt.report()
+
+
+
+
