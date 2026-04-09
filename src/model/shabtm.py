@@ -2,13 +2,13 @@ import torch
 from torch import nn
 
 from src.model.utils.general import MLP, ModuleFactory as MBF
-from src.model.utils.multisc import MultiScenarioContainer
+from src.model.utils.container import MultiTaskContainer as MTC, MultiScenarioContainer as MSC
 
 class SharedBottomLess(nn.Module):
     def __init__(self, emb_size, num_domains):
         super().__init__()
         self.expert = MBF.build_expert(emb_size, depth_multiplier=2)()
-        self.towers = MultiScenarioContainer(num_domains, MBF.build_tower(emb_size))
+        self.towers = MSC(num_domains, MBF.build_tower(emb_size))
 
     def forward(self, x, domain_ids):
         expert_out = self.expert(x)
@@ -18,7 +18,7 @@ class SharedBottomPlus(nn.Module):
     def __init__(self, emb_size, num_domains):
         super().__init__()
         self.expert = MLP(emb_size, emb_size, emb_size, emb_size // 2, emb_size)
-        self.towers = MultiScenarioContainer(num_domains, MBF.build_tower(emb_size))
+        self.towers = MSC(num_domains, MBF.build_tower(emb_size))
 
     def forward(self, x, domain_ids):
         expert_out = self.expert(x)

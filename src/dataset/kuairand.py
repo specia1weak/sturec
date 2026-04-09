@@ -1,8 +1,9 @@
 from pathlib import Path
 
 from src.betterbole.data.dataset import ParquetStreamDataset
-from src.betterbole.emb.schema import SchemaManager, SparseEmbSetting, QuantileEmbSetting, \
+from src.betterbole.emb.schema import  SparseEmbSetting, QuantileEmbSetting, \
     SparseSetEmbSetting, IdSeqEmbSetting
+from src.betterbole.emb import SchemaManager
 import polars as pl
 from src.betterbole.enum_type import FeatureSource
 from src.betterbole.plutils import extract_history_sequences
@@ -10,7 +11,7 @@ from src.dataset.base import DatasetBase
 import pprint
 
 class KuaiRandDataset(DatasetBase):
-    BASE_DIR = Path("D:/pyprojects/recommend-study/Datasets/KuaiRand")
+    BASE_DIR = DatasetBase.SYSTEM_DATA_DIR / "KuaiRand"
     DATA_KUAI_1K = BASE_DIR / "data" / "KuaiRand-1K" / "data"
     STD_LOG_FORMER_DATA = DATA_KUAI_1K / "log_standard_4_08_to_4_21_1k.csv"
     STD_LOG_FORMER_DATA_P1 = STD_LOG_FORMER_DATA

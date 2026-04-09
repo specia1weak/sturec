@@ -1,5 +1,4 @@
 from typing import List, Callable
-
 import torch
 import torch.nn as nn
 from abc import ABC, abstractmethod
@@ -49,18 +48,9 @@ class MultiScenarioCloneBase(nn.Module, ABC):
 
 
 class MultiScenarioContainer(nn.Module):
-    """
-    多场景网络容器。
-    通过传入 `network_factory` 来动态生成多个独立的场景网络。
-    """
     def __init__(self, num_domains: int, network_factory: Callable[[], nn.Module]):
-        """
-        :param num_domains: 场景数量
-        :param network_factory: 一个无参函数，调用它必须返回一个全新的 nn.Module 实例
-        """
         super().__init__()
         self.num_domains = num_domains
-        # 核心改动：循环调用工厂函数，生成相互独立的网络实例
         self.domain_networks = nn.ModuleList([
             network_factory() for _ in range(num_domains)
         ])
@@ -76,6 +66,41 @@ class MultiScenarioContainer(nn.Module):
             if select_domain_ids is not None:
                 logits = domain_select(logits, select_domain_ids)
         return logits
+
+    def __getitem__(self, idx):
+        return self.domain_networks[idx]
+
+
+class MultiTaskContainer(nn.Module):
+    """
+    多任务网络容器。
+    不同于多场景的“按需选择”，多任务需要对输入特征进行“全量分发与收集”。
+    """
+    def __init__(self, task_names: List[str], network_factory: Callable[[], nn.Module]):
+        """
+        :param task_names: 任务名称列表，例如 ['ctr', 'cvr']
+        :param network_factory: 实例化单任务网络的工厂函数
+        """
+        super().__init__()
+        self.task_names = task_names
+        self.task_networks = nn.ModuleDict({
+            task: network_factory() for task in task_names
+        })
+
+    def forward(self, x: torch.Tensor, **kwargs):
+        """
+        x: 底层提取出来的共享特征 [Batch, Feature_Dim]
+        kwargs: 透传参数（例如可以把 domain_ids 透传给内部的多场景网络）
+        """
+        task_logits = {}
+        for task_name, task_net in self.task_networks.items():
+            task_logits[task_name] = task_net(x, **kwargs)
+        return task_logits
+
+    def __getitem__(self, task_name):
+        return self.task_networks[task_name]
+
+
 
 if __name__ == '__main__':
     class PLE(nn.Module):

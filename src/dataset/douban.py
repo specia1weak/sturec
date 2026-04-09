@@ -13,7 +13,7 @@ def _drop_recbole_type(lf: pl.LazyFrame)->pl.LazyFrame:
     return lf
 
 class _DBDS(DatasetBase):
-    BASE_DIR = Path("D:/pyprojects/recommend-study/Datasets/Douban")
+    BASE_DIR = DatasetBase.SYSTEM_DATA_DIR / "Douban"
     BOOK_DIR = BASE_DIR / "DoubanBook"
     MOVIE_DIR = BASE_DIR / "DoubanMovie"
     MUSIC_DIR = BASE_DIR / "DoubanMusic"

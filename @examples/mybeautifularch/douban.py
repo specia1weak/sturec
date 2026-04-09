@@ -4,8 +4,9 @@ from torch.nn import BatchNorm1d
 from torch.utils.data import DataLoader
 
 from src.betterbole.data.dataset import ParquetStreamDataset
-from src.betterbole.emb.schema import SchemaManager, SparseEmbSetting, QuantileEmbSetting, \
+from src.betterbole.emb.schema import SparseEmbSetting, QuantileEmbSetting, \
     SparseSetEmbSetting, IdSeqEmbSetting, MinMaxDenseSetting
+from src.betterbole.emb import SchemaManager
 import polars as pl
 from src.betterbole.enum_type import FeatureSource
 from src.betterbole.evaluate.evaluator import Evaluator, LogDecorator

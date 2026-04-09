@@ -97,6 +97,39 @@ class BaseDiffusionModel(nn.Module):
         target = self.scheduler.get_target(x_0, true_noise, t, self.pred_type)
         return F.mse_loss(predictions, target)
 
+    @torch.no_grad()
+    def refine(self, x_0: torch.Tensor, strength: float = 0.5, y=None, guidance_scale=1.0):
+        """
+        图生图 (SDEdit 范式)
+        - x_0: 干净的初始图片 (比如用户的草图、或者需要被增强的低频特征图)
+        - strength: 重绘幅度 [0.0, 1.0]。
+                    1.0 代表完全破坏并重绘 (等价于 reconstruct)；
+                    0.0 代表完全不改变原图。
+        """
+        self.eval()
+
+        # 1. 约束并映射 strength 到具体的时间步 t_start
+        t_start = int(strength * self.num_timesteps) - 1
+        t_start = max(0, min(t_start, self.num_timesteps - 1))
+
+        # 如果 strength 为 0，说明完全不需要重绘，直接返回原图
+        if t_start < 0:
+            return x_0
+
+        # 2. 前向加噪：把干净的 x_0 "弄脏" 到 t_start 阶段
+        batch_size = x_0.shape[0]
+        t_tensor = torch.full((batch_size,), t_start, dtype=torch.long, device=x_0.device)
+        x_t_start, _ = self.scheduler.add_noise(x_0, t_tensor)
+        # 3. 反向去噪：调用你写好的万能 denoise 函数，从 t_start 开始往回走
+        # 需要走的步数是 t_start + 1 (因为包含了 t=0 这一步)
+        return self.denoise(
+            x_t_start,
+            t_start=t_start,
+            y=y,
+            guidance_scale=guidance_scale,
+            steps=t_start + 1
+        )[0]
+
 class DenoiseModel(BaseDiffusionModel):
     pred_type = PredType.NOISE  # 覆盖属性，语义清晰
     @abstractmethod

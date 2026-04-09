@@ -1,5 +1,5 @@
 from src.model.utils.general import MLP
-from src.model.utils.multisc import MultiScenarioContainer as MSC, domain_select
+from src.model.utils.container import MultiTaskContainer as MTC, MultiScenarioContainer as MSC, domain_select
 from src.model.utils.general import ModuleFactory as MF
 import torch
 import torch.nn.functional as F
@@ -98,7 +98,7 @@ class PLEVersion4(PLE):
 if __name__ == '__main__':
     model = PLE(128, 5)
 
-    from src.utils.record import IndividualReLUMonitor
+    from src.utils.monitor import IndividualReLUMonitor
     from src.model.utils.tests import dummy_input_multi_domain
     irm = IndividualReLUMonitor(model, 50)
 

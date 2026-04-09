@@ -95,7 +95,7 @@ class MLP(nn.Module):
 
 class ModuleFactory:
     @staticmethod
-    def build_expert(in_dim: int, hidout_dims=None):
+    def build_expert(in_dim: int, hidout_dims=None, dropout_rate=0.1):
         """
         构建专家网络。
         :param output_dim: 如果有输出要求，默认emb // size 改成 传参
@@ -109,7 +109,7 @@ class ModuleFactory:
         if not isinstance(hidout_dims, Iterable):
             hidout_dims = [hidout_dims]
         dims = [in_dim, *hidout_dims]
-        return lambda: MLP(*dims, dropout_rate=0.1, activation="relu")
+        return lambda: MLP(*dims, dropout_rate=dropout_rate, activation="relu")
 
     @staticmethod
     def build_gate(in_dim, num_output=None):

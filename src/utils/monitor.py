@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from collections import deque
-
+import polars as pl
 
 class IndividualReLUMonitor:
     def __init__(self, model, window_size=50):
@@ -67,9 +67,14 @@ class ExplicitFeatureMonitor:
         tensor_cpu = tensor_data.detach().float().cpu()
         batch_mean = tensor_cpu.mean(dim=0).numpy()
         batch_var = tensor_cpu.var(dim=0).numpy()
+        # 新增：计算整个 batch 的全局均值和方差
+        feature_mean = tensor_cpu.mean().item()
+        feature_var = tensor_cpu.var().item()
         self.features[name].append({
             'batch_mean': batch_mean,
-            'batch_var': batch_var
+            'batch_var': batch_var,
+            'feature_mean': feature_mean,
+            'feature_var': feature_var
         })
 
     def get_window_stats(self):
@@ -80,11 +85,19 @@ class ExplicitFeatureMonitor:
                 window_means = np.array(
                     [item['batch_mean'] for item in data_queue])  # shape: [window_size, num_experts]
                 window_vars = np.array([item['batch_var'] for item in data_queue])  # shape: [window_size, num_experts]
+                feature_means = np.array([item['feature_mean'] for item in data_queue])  # shape: [window_size]
+                feature_vars = np.array([item['feature_var'] for item in data_queue])  # shape: [window_size]
                 stats[name] = {
-                    'intro_batch_mean': np.mean(window_means, axis=0),
-                    'inter_batch_var': np.var(window_means, axis=0),
-                    'intro_batch_vars': np.mean(window_vars, axis=0)
+                    '样本平均值': np.mean(window_means, axis=0),
+                    '样本方差': np.mean(window_vars, axis=0),
+                    '训练方差': np.var(window_means, axis=0),
+                    '特征均值': np.mean(feature_means),
+                    '特征方差': np.mean(feature_vars),
                 }
             else:
                 stats[name] = None
-        return stats
+
+        infos = []
+        for name, stat in stats.items():
+            infos.append(f"{name:=^20} \n{str(pl.DataFrame(stat))}")
+        return "\n".join(infos)

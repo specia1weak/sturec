@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python \"@examples/mybeautifularch/ml1m-5rating.py\")",
+      "Bash(PYTHONPATH=\"D:/pyprojects/recommend-study/studybole\" python \"@examples/mybeautifularch/ml1m-5rating.py\")"
+    ]
+  }
+}

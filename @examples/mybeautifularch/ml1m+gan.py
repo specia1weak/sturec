@@ -28,70 +28,7 @@ from src.utils.monitor import ExplicitFeatureMonitor
 
 change_root_workdir()
 Backbone = MLP
-EMB_DIM = 3
-
-class SimpleBPR(nn.Module):
-    def __init__(self, schema_manager: SchemaManager,):
-        super(SimpleBPR, self).__init__()
-        manager = schema_manager
-        self.user_profile_encoder = UserProfileEncoder(manager.settings, manager.work_dir / manager.USER_PROFILE_NAME)
-        self.item_profile_encoder = ItemProfileEncoder(manager.settings, manager.work_dir / manager.ITEM_PROFILE_NAME)
-        self.inter_emb_layer = InterSideEmb(manager.settings)
-
-        self.manager = manager
-        item_embedding_size = manager.source2emb_size(
-            FeatureSource.ITEM_ID, FeatureSource.ITEM,
-        )
-        self.seq_embeder = SeqEmbedder("history", manager.settings, self.item_profile_encoder)
-        self.seq_encoder = AttentionSequencePoolingLayer(item_embedding_size)
-        # self.seq_encoder = SequencePoolingLayer(mode='mean')
-        self.LABEL = manager.label_field
-        self.input_dim = manager.source2emb_size(FeatureSource.USER_ID, FeatureSource.USER,
-                                                 FeatureSource.ITEM_ID, FeatureSource.ITEM,
-                                                 FeatureSource.INTERACTION) + item_embedding_size # 后者来自序列建模
-        # self.input_dim = manager.source2emb_size(FeatureSource.USER_ID, FeatureSource.USER,
-        #                                          FeatureSource.ITEM_ID, FeatureSource.ITEM,
-        #                                          FeatureSource.INTERACTION) # 后者来自序列建模
-        self.seq_ln = nn.LayerNorm(item_embedding_size)
-        print(f"输入维度, {self.input_dim}")
-        self.mlp = MLP(self.input_dim, self.input_dim // 2, 64, 1)
-        self.DOMAIN = "domain_id"
-
-    def concat_embed_input_fields(self, interaction):
-        uid = interaction[self.manager.uid_field]
-        iid = interaction[self.manager.iid_field]
-        user_emb = self.user_profile_encoder.forward(uid, flat2tensor=True)
-        item_emb = self.item_profile_encoder.forward(iid, flat2tensor=True)
-        inter_emb = self.inter_emb_layer.forward(interaction, flat2tensor=True)
-
-        item_emb_seq, seq_len = self.seq_embeder.forward(interaction, flat2tensor=True)
-        # seq_emb = self.seq_encoder.forward(item_emb_seq, seq_len)
-        seq_emb = self.seq_encoder.forward(item_emb, item_emb_seq, seq_len)
-        seq_emb = self.seq_ln(seq_emb)
-        # seq_emb = None
-
-        left_emb = [emb for emb in [user_emb, item_emb, inter_emb, seq_emb] if emb is not None]
-        whole_emb = torch.cat(left_emb, dim=-1)
-        return whole_emb
-
-    def forward(self, x, domain_ids):
-        return self.mlp.forward(x).squeeze(-1)
-
-    def predict(self, interaction):
-        x = self.concat_embed_input_fields(interaction)
-        domain_ids = interaction[self.DOMAIN]
-        x = torch.flatten(x, start_dim=1)
-        final_logits = self.forward(x, domain_ids)
-        return torch.sigmoid(final_logits)
-
-    def calculate_loss(self, interaction):
-        labels = interaction[self.LABEL].float()
-        domain_ids = interaction[self.DOMAIN]
-        x = self.concat_embed_input_fields(interaction)
-        x = torch.flatten(x, start_dim=1)
-        final_logits = self.forward(x, domain_ids)
-        loss = nn.functional.binary_cross_entropy_with_logits(final_logits, labels)
-        return loss
+EMB_DIM = 16
 
 class SpecialModel(nn.Module):
     def __init__(self, schema_manager: SchemaManager,):
@@ -102,21 +39,32 @@ class SpecialModel(nn.Module):
         self.inter_emb_layer = InterSideEmb(manager.settings)
 
         self.manager = manager
-        item_embedding_size = manager.source2emb_size(
-            FeatureSource.ITEM_ID, FeatureSource.ITEM,
-        )
         self.LABEL = manager.label_field
         self.DOMAIN = manager.domain_field
+
         self.whole_input_dim = manager.source2emb_size(FeatureSource.USER_ID, FeatureSource.USER,
                                                  FeatureSource.ITEM_ID, FeatureSource.ITEM,FeatureSource.INTERACTION)
         self.share_input_dim = manager.source2emb_size(FeatureSource.USER,FeatureSource.ITEM,FeatureSource.INTERACTION)
         self.specific_input_dim = manager.source2emb_size(FeatureSource.USER_ID,FeatureSource.ITEM_ID)
+        self.item_id_input_dim = manager.source2emb_size(FeatureSource.ITEM_ID)
+        self.user_id_input_dim = manager.source2emb_size(FeatureSource.USER_ID)
 
-        self.whole_expert = MLP(self.whole_input_dim, self.whole_input_dim // 2, 64, 1)
-        self.share_expert = MLP(self.share_input_dim, self.share_input_dim // 2, 64, 1)
-        self.specific_expert = MLP(self.specific_input_dim, self.specific_input_dim // 2, 64, 4)
+        self.specific_expert = MLP(self.specific_input_dim, 64, 1)
+        self.user_id_expert = MLP(self.user_id_input_dim, 64, 1)
+        self.item_id_expert = MLP(self.item_id_input_dim, 64, 1)
+        # self.logit_bias = nn.Parameter(torch.tensor(0))
+
+        # self.batch_norm = BatchNorm1d(6)
+        self.gate_expert = MLP(self.specific_input_dim, 64, 3)
 
         self.gate_monitor = ExplicitFeatureMonitor()
+        self._train_gate = True
+        self._last_gates = None
+
+    def train_gate(self):
+        self._train_gate = True
+    def freeze_gate(self):
+        self._train_gate = False
 
     def _drop_none(self, list):
         return [emb for emb in list if emb is not None]
@@ -133,35 +81,43 @@ class SpecialModel(nn.Module):
         item_side_emb = item_emb_dict[FeatureSource.ITEM]
         inter_emb = self.inter_emb_layer.forward(interaction, flat2tensor=True)
 
-        whole_emb = torch.cat(self._drop_none([user_id_emb, user_side_emb, item_id_emb, item_side_emb, inter_emb]), dim=-1)
-        share_emb = torch.cat(self._drop_none([user_side_emb, item_side_emb, inter_emb]) , dim=-1)
         specific_emb = torch.cat(self._drop_none([user_id_emb, item_id_emb]), dim=-1)
 
-        return whole_emb, share_emb, specific_emb
+        return specific_emb, user_id_emb, item_id_emb
 
-    def forward(self, who, sha, spe):
-        who_logits = self.whole_expert(who)  # B 1
-        sha_logits = self.share_expert(sha)
-        spe_logits, gates = torch.split(self.specific_expert(spe), [1, 3], dim=-1)  # B 4
-        all_logits = torch.cat([who_logits, sha_logits, spe_logits], dim=-1)
+    def forward(self, spe, uid, iid):
+        uid_logits = self.user_id_expert(uid)
+        iid_logits = self.item_id_expert(iid)
+        spe_logits = self.specific_expert(spe)
+        gates = self.gate_expert(spe)
+        if not self._train_gate:
+            gates = gates.detach()
 
-        mask = torch.zeros_like(gates, dtype=torch.bool)
-        mask[:, 0] = True
-        gates = gates.masked_fill(mask, float('-inf'))
+        all_logits = torch.cat([uid_logits, iid_logits, spe_logits], dim=-1)
+
+        # 选择mask掉谁
+        # mask = torch.zeros_like(gates, dtype=torch.bool)
+        # gates = gates.masked_fill(mask, float('-inf'))
+        # 结束
+
         gates = F.softmax(gates, dim=-1)
         self.gate_monitor.record("three_expert", gates)
+        self.gate_monitor.record("ctr_contribute", gates * all_logits)
         final_logits = torch.sum(gates * all_logits, dim=-1)  # B
+        self._last_gates = gates
         return final_logits
 
     def predict(self, interaction):
-        who, sha, spe = self.concat_embed_input_fields(interaction)
-        return self.forward(who, sha, spe)
+        spe, uid, iid = self.concat_embed_input_fields(interaction)
+        return self.forward(spe, uid, iid)
 
     def calculate_loss(self, interaction):
         labels = interaction[self.LABEL].float()
         final_logits = self.predict(interaction)
-        loss = nn.functional.binary_cross_entropy_with_logits(final_logits, labels)
+        gate_loss = -0.02 * torch.var(self._last_gates, dim=0).mean()
+        loss = nn.functional.binary_cross_entropy_with_logits(final_logits, labels) + gate_loss
         return loss
+
 
 
 
@@ -293,6 +249,7 @@ if __name__ == '__main__':
             ntr.report()
             # print(f"=== Epoch {epoch} Done, Average Loss: {total_loss / batch_count:.4f} ===")
         torch.save(model.state_dict(), model_path)
+        exit()
 
 
 
@@ -303,72 +260,82 @@ if __name__ == '__main__':
     with torch.no_grad():
         for batch_interaction in ps_dataset:
             batch_interaction = batch_interaction.to(device)
-            _, _, specific_emb = model.concat_embed_input_fields(batch_interaction)
+            specific_emb, _, _ = model.concat_embed_input_fields(batch_interaction)
             streaming_scaler.collect(specific_emb)
         streaming_scaler.finalize()
 
-    from src.model.generative.gan.gans import VectorResGAN
-    generative_model = VectorResGAN(model.specific_input_dim, model.specific_input_dim, hidden_dim=64).to(device)
-    gan_path = manager.work_dir / "gan.pt"
-    if gan_path.exists():
-        generative_model.load_state_dict(torch.load(gan_path))
-        print("已加载权重")
-    else:
-        # 修复 1：提高学习率到正常 MLP 扩散的量级
-        opt_G = torch.optim.Adam(generative_model.generator.parameters(), lr=1e-4)
-        opt_D = torch.optim.Adam(generative_model.discriminator.parameters(), lr=1e-4)
-        for epoch in range(100):  # 扩散通常需要比判别式更多的 epoch
-            total_d_loss = 0.0
-            total_g_loss = 0.0
-            batch_count = 0
-            generative_model.train()
-            for batch_interaction in ps_dataset:
-                batch_interaction = batch_interaction.to(device)
-                with torch.no_grad():
-                    _, _, x_0 = model.concat_embed_input_fields(batch_interaction)
-                x_0 = x_0.detach()
-                std_x_0 = streaming_scaler.forward(x_0)
-                d_loss, g_loss = generative_model.optimize_step(std_x_0, opt_G, opt_D)
-                total_d_loss += d_loss
-                total_g_loss += g_loss
-                batch_count += 1
 
-            avg_d_loss = total_d_loss / batch_count
-            avg_g_loss = total_g_loss / batch_count
-            print(f"Epoch {epoch} | Average DLoss: {avg_d_loss:.4f}; GLoss: {avg_g_loss:.4f}")
-        torch.save(generative_model.state_dict(), gan_path)
-        exit()
+    def train_generator(y=0):
+        from src.model.generative.gan.gans import VectorResGAN
+        generative_model = VectorResGAN(model.specific_input_dim, model.specific_input_dim, hidden_dim=64).to(device)
+        gan_path = manager.work_dir / f"gan_y{y}.pt"
+        if gan_path.exists():
+            generative_model.load_state_dict(torch.load(gan_path))
+            print("已加载权重")
+        else:
+            # 修复 1：提高学习率到正常 MLP 扩散的量级
+            opt_G = torch.optim.Adam(generative_model.generator.parameters(), lr=1e-4)
+            opt_D = torch.optim.Adam(generative_model.discriminator.parameters(), lr=1e-4)
+            for epoch in range(30):  # 扩散通常需要比判别式更多的 epoch
+                total_d_loss = 0.0
+                total_g_loss = 0.0
+                batch_count = 0
+                generative_model.train()
+                for batch_interaction in ps_dataset:
+                    batch_interaction = batch_interaction.to(device)
+                    target_index = batch_interaction.interaction[manager.label_field] == y
+                    batch_interaction = batch_interaction[target_index]
+                    with torch.no_grad():
+                        spe, uid, iid = model.concat_embed_input_fields(batch_interaction)
+                    spe = spe.detach()
+                    std_x_0 = streaming_scaler.forward(spe)
+                    d_loss, g_loss = generative_model.optimize_step(std_x_0, opt_G, opt_D)
+                    total_d_loss += d_loss
+                    total_g_loss += g_loss
+                    batch_count += 1
+
+                avg_d_loss = total_d_loss / batch_count
+                avg_g_loss = total_g_loss / batch_count
+                print(f"Epoch {epoch} | Average DLoss: {avg_d_loss:.4f}; GLoss: {avg_g_loss:.4f}")
+            torch.save(generative_model.state_dict(), gan_path)
+        return generative_model
+
+    y0generator = train_generator(y=0)
+    y1generator = train_generator(y=1)
+
 
     print("掺假训练")
     # 训练完毕, 10%的概率穿插假样本
-    top_layer_params = list(model.whole_expert.parameters()) + \
-                       list(model.share_expert.parameters()) + \
-                       list(model.specific_expert.parameters())
-    optimizer = torch.optim.Adam(top_layer_params, lr=1e-4)
+    new_model = SpecialModel(manager).to(device)
+    optimizer = torch.optim.Adam(new_model.parameters(), lr=1e-3)
 
-    for epoch in range(25):
+    for epoch in range(30):
         batch_count = 0
         for batch_interaction in ps_dataset:
-            model.train()
+            new_model.train()
             optimizer.zero_grad()
             batch_interaction = batch_interaction.to(device)
             labels = batch_interaction[model.LABEL].float()
-            whole_emb, share_emb, specific_emb = model.concat_embed_input_fields(batch_interaction)
+            spe, uid, iid = model.concat_embed_input_fields(batch_interaction)
 
-            # 插入假特征
-            batch_size = specific_emb.shape[0]
-            replace_prob = 0.2
+            # 插入假特征，根据标签选择对应的生成器
+            batch_size = spe.shape[0]
+            replace_prob = 1.01
             replace_mask = torch.rand(batch_size, device=device) < replace_prob
-            whole_emb = whole_emb.detach()
-            share_emb = share_emb.detach()
-            mixed_specific_emb = specific_emb.detach().clone()
+            mixed_specific_emb = spe.detach().clone()
             if replace_mask.any():
-                share_emb_subset = share_emb[replace_mask]
-                x_T = torch.randn((share_emb_subset.shape[0], specific_emb.shape[-1]), device=device)
-                fake_specific_emb = generative_model.forward(x_T)
-                fake_specific_emb = streaming_scaler.inverse(fake_specific_emb)
-                mixed_specific_emb[replace_mask] = fake_specific_emb
-            logits = model.forward(whole_emb, share_emb, mixed_specific_emb)
+                # 根据标签分别生成假特征
+                gen_list = [y0generator, y1generator]
+                for label_val in [0, 1]:
+                    label_mask = (labels == label_val) & replace_mask
+                    if label_mask.any():
+                        num_replace = label_mask.sum().item()
+                        x_T = torch.randn((num_replace, spe.shape[-1]), device=device)
+                        fake_specific_emb = gen_list[label_val].forward(x_T)
+                        fake_specific_emb = streaming_scaler.inverse(fake_specific_emb)
+                        mixed_specific_emb[label_mask] = fake_specific_emb
+            uid, iid = torch.split(mixed_specific_emb, [16, 16], dim=-1)
+            logits = new_model.forward(mixed_specific_emb, uid, iid)
             # 计算结束
 
             loss = nn.functional.binary_cross_entropy_with_logits(logits, labels)
@@ -388,7 +355,8 @@ if __name__ == '__main__':
                 batch_interaction = batch_interaction.to(device)
                 uids = batch_interaction[manager.uid_field]
                 labels = batch_interaction[manager.label_field]
-                scores = model.predict(batch_interaction)
+                specific_emb, user_id_emb, item_id_emb = model.concat_embed_input_fields(batch_interaction)
+                scores = new_model.forward(specific_emb, user_id_emb, item_id_emb)
                 evaluator.collect_pointwise(uids, labels, batch_preds_1d=scores)
 
         metrics_result = evaluator.summary(epoch)

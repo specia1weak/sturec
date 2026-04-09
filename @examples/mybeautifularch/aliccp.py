@@ -81,137 +81,51 @@ if __name__ == '__main__':
     device = "cuda"
 
     user_setting = SparseEmbSetting("user_id", FeatureSource.USER_ID, 1) # 显存太低没法拉高dim
-    item_setting = SparseEmbSetting("video_id", FeatureSource.ITEM_ID, 1) # 显存太低没法拉高dim
+    item_setting = SparseEmbSetting("item_id", FeatureSource.ITEM_ID, 1) # 显存太低没法拉高dim
     settings_list = [
         user_setting,
         item_setting,
-        SparseEmbSetting("tab", FeatureSource.INTERACTION, 16),
+        SparseEmbSetting("domain_id", FeatureSource.INTERACTION, 16),
 
-        SparseEmbSetting("user_active_degree", FeatureSource.USER, 16),
-        SparseEmbSetting("is_live_streamer", FeatureSource.USER, 16),
-        SparseEmbSetting("is_video_author", FeatureSource.USER, 16),
-        SparseEmbSetting("friend_user_num_range", FeatureSource.USER, 16),
-        SparseEmbSetting("register_days_range", FeatureSource.USER, 16),
-        SparseEmbSetting("follow_user_num_range", FeatureSource.USER, 16),
-        SparseEmbSetting("fans_user_num_range", FeatureSource.USER, 16),
-        SparseEmbSetting("is_lowactive_period", FeatureSource.USER, 16),
-        SparseEmbSetting("onehot_feat0", FeatureSource.USER, 16),
-        SparseEmbSetting("onehot_feat1", FeatureSource.USER, 16),
-        SparseEmbSetting("onehot_feat2", FeatureSource.USER, 16),
-        SparseEmbSetting("onehot_feat3", FeatureSource.USER, 16),
-        SparseEmbSetting("onehot_feat4", FeatureSource.USER, 16),
-        SparseEmbSetting("onehot_feat5", FeatureSource.USER, 16),
-        SparseEmbSetting("onehot_feat6", FeatureSource.USER, 16),
-        SparseEmbSetting("onehot_feat7", FeatureSource.USER, 16),
-        SparseEmbSetting("onehot_feat8", FeatureSource.USER, 16),
-        SparseEmbSetting("onehot_feat9", FeatureSource.USER, 16),
-        SparseEmbSetting("onehot_feat10", FeatureSource.USER, 16),
-        SparseEmbSetting("onehot_feat11", FeatureSource.USER, 16),
-        SparseEmbSetting("onehot_feat12", FeatureSource.USER, 16),
-        SparseEmbSetting("onehot_feat13", FeatureSource.USER, 16),
-        SparseEmbSetting("onehot_feat14", FeatureSource.USER, 16),
-        SparseEmbSetting("onehot_feat15", FeatureSource.USER, 16),
-        SparseEmbSetting("onehot_feat16", FeatureSource.USER, 16),
-        SparseEmbSetting("onehot_feat17", FeatureSource.USER, 16),
-        MinMaxDenseSetting("follow_user_num", FeatureSource.USER),
-        MinMaxDenseSetting("fans_user_num", FeatureSource.USER),
-        MinMaxDenseSetting("friend_user_num", FeatureSource.USER),
-        MinMaxDenseSetting("register_days", FeatureSource.USER),
+        QuantileEmbSetting("user_hist_category_count", FeatureSource.USER, 10, 16),
+        QuantileEmbSetting("user_hist_shop_count", FeatureSource.USER, 10, 16),
+        QuantileEmbSetting("user_hist_brand_count", FeatureSource.USER, 10, 16),
+        QuantileEmbSetting("user_hist_intention_count", FeatureSource.USER, 10, 16),
 
-        # SparseEmbSetting("author_id", FeatureSource.ITEM, 16),
-        # SparseEmbSetting("music_id", FeatureSource.ITEM, 16),
-        SparseEmbSetting("video_type", FeatureSource.ITEM, 16),
-        SparseEmbSetting("music_type", FeatureSource.ITEM, 16),
-        SparseEmbSetting("visible_status", FeatureSource.ITEM, 16),
-        SparseEmbSetting("server_width", FeatureSource.ITEM, 16),
-        SparseEmbSetting("server_height", FeatureSource.ITEM, 16),
+        SparseEmbSetting("user_profile_id", FeatureSource.USER, 2),
+        SparseEmbSetting("user_profile_group_id", FeatureSource.USER, 2),
+        SparseEmbSetting("user_age_id", FeatureSource.USER, 16),
+        SparseEmbSetting("user_consumption_level_1", FeatureSource.USER, 16),
+        SparseEmbSetting("user_consumption_level_2", FeatureSource.USER, 16),
+        SparseEmbSetting("user_is_working", FeatureSource.USER, 16),
+        SparseEmbSetting("user_geography_info", FeatureSource.USER, 16),
 
+        SparseEmbSetting("item_category_id", FeatureSource.ITEM, 16),
+        SparseEmbSetting("item_shop_id", FeatureSource.ITEM, 16),
+        SparseEmbSetting("item_brand_id", FeatureSource.ITEM, 16),
 
         SparseSetEmbSetting(
-            "tag", FeatureSource.ITEM,16,
-            is_string_format=True, separator=","
+            "item_intention_node_id", FeatureSource.ITEM,16,is_string_format=False
         ),
-
-        # 创造的
-        # IdSeqEmbSetting("history_videos", FeatureSource.INTERACTION, item_setting,
-        #                 is_string_format=False),
-        SparseEmbSetting("day_of_week", FeatureSource.INTERACTION, 16),
-        SparseEmbSetting("hour", FeatureSource.INTERACTION, 16),
-        SparseEmbSetting("is_weekend", FeatureSource.INTERACTION, 16),
     ]
 
-    manager = SchemaManager(settings_list, "kuairand-workdir", time_field="time_ms", label_field="is_click", domain_field="tab")
-    from src.dataset.kuairand import KuaiRandDataset
+    manager = SchemaManager(settings_list, "aliccp-workdir", label_fields=["click", "purchase"], domain_fields="domain_id")
+    from src.dataset.aliccp import AliCCPDataset
     import pandas as pd
-    user_lf = pl.scan_csv(KuaiRandDataset.USER_FEATURES)
-    item_lf = pl.scan_csv(KuaiRandDataset.VIDEO_FEATURES)
-    # inter_lf = pl.scan_csv(KuaiRand.STD_LOG_FORMER_DATA_P2)
-    inter_lf = pl.scan_csv([KuaiRandDataset.STD_LOG_FORMER_DATA_P1, KuaiRandDataset.STD_LOG_FORMER_DATA_P2, KuaiRandDataset.RAND_LOG_FORMER_DATA])
-    whole_lf: pl.LazyFrame = inter_lf.join(item_lf, on="video_id", how="left").join(user_lf, on="user_id", how="left")
-    ## 排除部分场景数据
-    top_5_domains = (
-        whole_lf.group_by("tab")
-        .len()
-        .sort("len", descending=True)
-        .head(5)
-        .select("tab")
-    )
-    whole_lf = whole_lf.join(top_5_domains, on="tab", how="semi")
+    # train_lf = AliCCPDataset.TRAIN_INTER_LF.with_columns(dataset=pl.lit("train"))
+    # test_lf = AliCCPDataset.TEST_INTER_LF.with_columns(dataset=pl.lit("test"))
+    # whole_lf = pl.concat([train_lf, test_lf], how="vertical")
+    # transformed_lf = manager.prepare_data(whole_lf)
+    # manager.generate_profiles(transformed_lf)
+    # train_lf = transformed_lf.filter(pl.col("dataset") == "train")
+    # valid_lf = transformed_lf.filter(pl.col("dataset") == "test")
+    # train_path, valid_path, _ = manager.save_as_dataset(train_lf, valid_lf)
 
-    ## 增加新特征
-    parsed_date = pl.col("date").cast(pl.Utf8).str.to_date("%Y%m%d", strict=False)
-    whole_lf = whole_lf.with_columns(
-        parsed_date.dt.weekday().alias("day_of_week"),
-        parsed_date.dt.weekday().is_in([6, 7]).cast(pl.UInt8).alias("is_weekend"),
-        (pl.col("hourmin").cast(pl.Int32) // 100).cast(pl.UInt8).alias("hour")
-    )
-
-    plot_bias_distributions(
-        lf=whole_lf,
-        uid_col="user_id",
-        iid_col="video_id",
-        label_col="is_click",
-        save_path=manager.work_dir / "bias_distribution.png",
-        min_item_interactions=10
-    )
-    plot_sparsity_distributions(
-        lf=whole_lf,
-        uid_col="user_id",
-        iid_col="video_id",
-        save_path=manager.work_dir / "sparsity_distribution.png",
-    )
-    plot_sparsity_ecdf(
-        lf=whole_lf,
-        uid_col="user_id",
-        iid_col="video_id",
-        save_path=manager.work_dir / "sparsity_ecdf.png"
-    )
-    plot_power2_sparsity(
-        lf=whole_lf,
-        uid_col="user_id",
-        iid_col="video_id",
-        save_path=manager.work_dir / "sparsity_power2.png"
-    )
-    exit()
-    # ========================
-    ## 增加新序列特征, 太复杂了，先不加
-    # max_seq_len = 50
-    # whole_lf = extract_history_items(whole_lf, max_seq_len=50,
-    #                          user_col="user_id",
-    #                          time_col="time_ms",
-    #                          item_col="video_id",
-    #                          seq_col="history_videos")
-    ## 处理中
-    transformed_lf = manager.prepare_data(whole_lf)
-
+    train_lf = AliCCPDataset.TRAIN_INTER_LF.with_columns(dataset=pl.lit("train"))
+    transformed_lf = manager.prepare_data(train_lf)
     manager.generate_profiles(transformed_lf)
-    train_lf = transformed_lf.filter(pl.col("is_rand") == 0)
-    valid_lf = transformed_lf.filter(pl.col("is_rand") == 1)
-    print(train_lf.select("date").head(5).collect())
-    print(valid_lf.select("date").head(5).collect())
-    # train_path, valid_path, _ = manager.split_dataset(transformed_lf, strategy="random_ratio")
-    train_path, valid_path, _ = manager.save_as_dataset(train_lf, valid_lf)
     print("架构编译成功，可供调用。")
+    exit()
     evaluator = LogDecorator(Evaluator("AUC"), save_path=manager.work_dir / "logs.log", title=Backbone.__name__)
     from src.betterbole.emb.emblayer import ProfileEncoder, InterSideEmb
 
@@ -244,12 +158,8 @@ if __name__ == '__main__':
         model.train()
         with ntr("epoch"):
             for batch_interaction in ps_dataset:
-                # 1. 采样：获取负样本
-                # 确保传入的是 numpy，且返回后立刻转为 long 并送到指定的 device
                 with ntr("prepare"):
                     uids = batch_interaction[manager.uid_field]
-                    # sampled_neg = puis.sample_by_key_ids(uids.numpy(), 1)
-                    # batch_interaction[model.neg_sample] = sampled_neg.view(-1)
                     batch_interaction = batch_interaction.to(device)
 
                 # 4. 前向传播与优化

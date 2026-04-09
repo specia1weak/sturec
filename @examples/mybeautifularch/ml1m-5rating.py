@@ -26,6 +26,7 @@ from src.model.utils.general import MLP, ModuleFactory
 from src.model.utils.sequence import AttentionSequencePoolingLayer, SequencePoolingLayer
 from src.utils import change_root_workdir
 from src.utils.monitor import ExplicitFeatureMonitor
+from src.utils.visualize import plot_bias_distributions, plot_sparsity_distributions, plot_power2_sparsity
 
 change_root_workdir()
 Backbone = MLP
@@ -105,13 +106,13 @@ class SimpleMLP(nn.Module):
         self.DOMAIN = manager.domain_field
         self.input_dim = manager.source2emb_size(FeatureSource.USER, FeatureSource.USER_ID, FeatureSource.ITEM, FeatureSource.ITEM_ID)
 
-        self.mlp = ModuleFactory.build_expert(self.input_dim, hidout_dims=[256, 128, 64], dropout_rate=0.5)()
+        self.mlp = ModuleFactory.build_expert(self.input_dim, hidout_dims=[256, 128, 64], dropout_rate=0.3)()
         self.tower = nn.Linear(64, 1)
 
     def forward(self, x):
         interest = self.mlp(x)
         logits = self.tower(interest).squeeze(-1)
-        return F.sigmoid(logits)
+        return logits
 
     def concat_embed_input_fields(self, interaction):
         uid = interaction[self.manager.uid_field]
@@ -206,8 +207,11 @@ class SpecialModel(nn.Module):
 
         # 选择mask掉谁
         mask = torch.zeros_like(gates, dtype=torch.bool)
-        # mask[:, -2:] = True
-        # mask[:, 2] = True
+        mask[:, -2:] = True
+        mask[:, 2] = False
+        mask[:, 3] = False
+        mask[:, :2] = False
+        mask[:, -2] = True
         gates = gates.masked_fill(mask, float('-inf'))
         # 结束
 
@@ -236,8 +240,8 @@ if __name__ == '__main__':
     auto_queue()
     device = "cuda"
 
-    user_setting = SparseEmbSetting("user_id", FeatureSource.USER_ID, EMB_DIM) # 显存太低没法拉高dim
-    item_setting = SparseEmbSetting("movie_id", FeatureSource.ITEM_ID, EMB_DIM) # 显存太低没法拉高dim
+    user_setting = SparseEmbSetting("user_id", FeatureSource.USER_ID, EMB_DIM)
+    item_setting = SparseEmbSetting("movie_id", FeatureSource.ITEM_ID, EMB_DIM)
     settings_list = [
         user_setting,
         item_setting,
@@ -245,11 +249,11 @@ if __name__ == '__main__':
         SparseEmbSetting("gender", FeatureSource.USER, 8),
         # SparseEmbSetting("occupation", FeatureSource.USER, 8),
 
-        # SparseSetEmbSetting("genres", FeatureSource.ITEM, 8),
+        SparseSetEmbSetting("genres", FeatureSource.ITEM, 8),
         # IdSeqEmbSetting("history", "history_len", target_setting=item_setting, max_len=50)
     ]
 
-    manager = SchemaManager(settings_list, "movielens-workdir", time_field="timestamp", label_field="label", domain_field="gender")
+    manager = SchemaManager(settings_list, "movielens-5r-workdir", time_field="timestamp", label_field="label", domain_field="gender")
     from src.dataset.movielens import MovieLensDataset
     import pandas as pd
     user_lf = pl.from_pandas(MovieLensDataset.USER_FEATURES_DF).lazy()
@@ -259,13 +263,41 @@ if __name__ == '__main__':
     whole_lf = whole_lf.with_columns(
         pl.col("genres").str.split("|"),
         (pl.col("rating") >= 4).cast(pl.Int8).alias("label")
+        # (pl.col("rating") / 4.0).cast(pl.Int8).alias("label")
     )
+
     whole_lf = whole_lf.with_columns(
         pl.when(pl.col("age") < 25).then(0)
         .when(pl.col("age") < 35).then(1)
         .otherwise(2)
         .alias("domain_id")
     )
+
+    # ==================== 开始插入 ====================
+    # === 直接调用绘图函数 ===
+    plot_bias_distributions(
+        lf=whole_lf,
+        uid_col="user_id",
+        iid_col="movie_id",
+        label_col="label",
+        save_path=manager.work_dir / "bias_distribution.png",
+        min_item_interactions=10
+    )
+    plot_sparsity_distributions(
+        lf=whole_lf,
+        uid_col="user_id",
+        iid_col="movie_id",
+        save_path=manager.work_dir / "sparsity_distribution.png",
+    )
+    plot_power2_sparsity(
+        lf=whole_lf,
+        uid_col="user_id",
+        iid_col="movie_id",
+        save_path=manager.work_dir / "sparsity_power2.png"
+    )
+    # ========================
+    # exit()
+
 
     max_seq_len = 50
     whole_lf = extract_history_items(whole_lf, max_seq_len=50,
@@ -300,7 +332,7 @@ if __name__ == '__main__':
     #     item_id_lf=transformed_lf.select(pl.col(manager.iid_field)),
     #     distribution="uniform"
     # )
-    model = SimpleMLP(manager).to(device)
+    model = SpecialModel(manager).to(device)
 
 
     from src.utils.time import CudaNamedTimer
@@ -334,7 +366,7 @@ if __name__ == '__main__':
                 batch_count += 1
                 if batch_count % 100 == 0:
                     ntr.report()
-                    # print(model.gate_monitor.get_window_stats())
+                    print(model.gate_monitor.get_window_stats())
                     print(f"Epoch {epoch}, Batch {batch_count}, Current Loss: {loss.item():.4f}")
 
         model.eval()

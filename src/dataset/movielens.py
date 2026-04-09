@@ -6,7 +6,7 @@ import polars as pl
 from src.dataset.base import DatasetBase
 
 class _MLDS(DatasetBase):
-    BASE_DIR = Path("D:/pyprojects/recommend-study/Datasets/MovieLens")
+    BASE_DIR = DatasetBase.SYSTEM_DATA_DIR /"MovieLens"
     ML_1M_DIR = BASE_DIR / "ml-1m"
     USER_FEATURES = ML_1M_DIR / "users.dat"
     MOVIES_FEATURES = ML_1M_DIR / "movies.dat"

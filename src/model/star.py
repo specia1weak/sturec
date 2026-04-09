@@ -3,7 +3,7 @@ from typing import Iterable, List, Tuple
 import torch
 from torch import nn
 from src.model.utils.general import MLP, ModuleFactory
-from src.model.utils.multisc import MultiScenarioContainer, domain_select
+from src.model.utils.container import MultiScenarioContainer, domain_select
 from src.model.utils.tests import dummy_input_multi_domain
 import torch.nn.functional as F
 
