@@ -1,4 +1,4 @@
-from typing import Iterable, List, Dict, Union
+from typing import Iterable, List, Dict, Union, Literal
 
 import numpy as np
 import pandas as pd
@@ -12,6 +12,8 @@ from src.betterbole.interaction import Interaction
 
 # 将settings中的col分成用户侧和物品侧，BoleEmbLayer会把宽表Interaction 变成对应的Dict Embedding
 
+
+SPLIT_METHODS = Literal["source", "name", "none", None]
 
 class BoleEmbLayer(nn.Module):
     def __init__(self, emb_settings: Iterable[EmbSetting]):
@@ -34,18 +36,22 @@ class BoleEmbLayer(nn.Module):
                 padding_idx={True: 0, False: None}[setting.padding_zero]
             )
 
-    def forward(self, interaction) -> Dict[FeatureSource, torch.Tensor]:
+    def forward(self, interaction, split_by: SPLIT_METHODS="none") -> Union[Dict[Union[str, FeatureSource], torch.Tensor], torch.Tensor]:
+        split_by = split_by.lower() if isinstance(split_by, str) else None
+        if split_by not in ("source", "name", "none", None):
+            raise ValueError
+
         output_embs = {}
         for source, settings in self.source2settings.items():
             if not settings:
                 continue
-            source_emb_list = []
+            emb_list = []
             for setting in settings:
                 idx_tensor = interaction[setting.field_name]
                 # 数字不需要emb
                 if setting.emb_type in (EmbType.DENSE,):
                     emb = idx_tensor.unsqueeze(-1)
-                    source_emb_list.append(emb)
+                    emb_list.append([setting.field_name, emb])
                     continue
 
                 emb = self.emb_modules[setting.field_name](idx_tensor)
@@ -53,12 +59,25 @@ class BoleEmbLayer(nn.Module):
                 if setting.emb_type in (EmbType.SPARSE_SEQ,):
                     emb = torch.sum(emb, dim=-2)
 
-                source_emb_list.append(emb)
+                emb_list.append([setting.field_name, emb])
 
-            if source_emb_list:
-                # 同一个 Source 下的特征直接 Concat
-                output_embs[source] = torch.cat(source_emb_list, dim=-1)
-        return output_embs
+            if emb_list:
+                if split_by == "source":
+                    output_embs[source] = torch.cat([emb for name, emb in emb_list], dim=-1)
+                elif split_by == "name":
+                    for name, emb in emb_list:
+                        output_embs[name] = emb
+                else:
+                    output_embs["all"] = output_embs.get("all", [])
+                    output_embs["all"].extend([emb for name, emb in emb_list])
+
+        if split_by is None or split_by == "none":
+            if output_embs.get("all", None) is None:
+                return None
+            else:
+                return torch.cat(output_embs.get("all"), dim=-1)
+        else:
+            return output_embs
 
 
 class SideEmb(nn.Module):
@@ -80,17 +99,10 @@ class SideEmb(nn.Module):
         self.embedding = BoleEmbLayer(side_settings)
         self.embedding_size = sum([s.embedding_size for s in side_settings])
 
-    def forward(self, interaction, flat2tensor=False) -> Union[torch.Tensor, Dict[FeatureSource, torch.Tensor]]:
+    def forward(self, interaction, split_by: SPLIT_METHODS="none") -> Union[torch.Tensor, Dict[FeatureSource, torch.Tensor]]:
         # 直接把大宽表吐出的 interaction 传给底层
-        emb_dict = self.embedding(interaction)
-
-        if flat2tensor:
-            tensors_to_cat = [emb_dict.get(src) for src in self.target_sources if src in emb_dict]
-            if tensors_to_cat:
-                return torch.cat(tensors_to_cat, dim=-1)
-            return None
-        else:
-            return emb_dict
+        emb_dict = self.embedding(interaction, split_by)
+        return emb_dict
 
 
 # 具体化实现，极其干净优雅
@@ -188,23 +200,21 @@ class ProfileEncoder(nn.Module):
 
         return padded
 
-    def forward(self, query_ids: torch.Tensor, flat2tensor: bool = False):
+    def forward(self, query_ids: torch.Tensor, split_by: SPLIT_METHODS= "none"):
         """
         前向传播：根据传入的 query_ids (比如一串 item_id)，
         瞬间从缓存中拉出所有特征，组装成 interaction 字典，喂给 SideEmb。
         """
         # 1. 构建虚拟 Interaction 字典
         interaction = {self.id_setting.field_name: query_ids}
-
         # 2. 动态查表
         for field in self.feature_names:
             # 取出注册好的 Buffer 矩阵
             buffer_tensor = getattr(self, f"buf_{field}")
-            # 高级索引查表，支持 query_ids 是一维 (当前目标) 或二维 (历史序列)
             interaction[field] = buffer_tensor[query_ids]
 
         # 3. 完美接入你的 SideEmb
-        return self.side_emb(interaction, flat2tensor=flat2tensor)
+        return self.side_emb(interaction, split_by=split_by)
 
 class UserProfileEncoder(ProfileEncoder):
     ID_SOURCE = FeatureSource.USER_ID
@@ -237,12 +247,9 @@ class SeqEmbedder(nn.Module):
 
         self.profile_encoder = profile_encoder
 
-    def forward(self, interaction: Interaction, flat2tensor=False):
+    def forward(self, interaction: Interaction, split_by: SPLIT_METHODS="none"):
         inter_dict = interaction.interaction
         seq = inter_dict[self.seq_field_name]
         seq_len = inter_dict[self.seq_len_field_name]
-        emb_seq = self.profile_encoder(seq)
-        if flat2tensor:
-            tensors_to_cat = [emb_seq.get(src) for src in emb_seq]
-            emb_seq = torch.cat(tensors_to_cat, dim=-1)
+        emb_seq = self.profile_encoder.forward(seq, split_by)
         return emb_seq, seq_len

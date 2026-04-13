@@ -51,8 +51,8 @@ class SimplePLE(nn.Module):
         self.LABEL = manager.label_field
 
     def concat_embed_input_fields(self, interaction):
-        user_emb = self.user_encoder.forward(interaction[self.manager.uid_field], flat2tensor=True)
-        item_emb = self.item_encoder.forward(interaction[self.manager.iid_field], flat2tensor=True)
+        user_emb = self.user_encoder.forward(interaction[self.manager.uid_field], split_by=True)
+        item_emb = self.item_encoder.forward(interaction[self.manager.iid_field], split_by=True)
         inter_emb = self.inter_emb_layer.forward(interaction, flat2tensor=True)
         return torch.cat([user_emb, item_emb, inter_emb], dim=-1)
 
@@ -64,7 +64,7 @@ class SimplePLE(nn.Module):
         domain_ids = interaction[self.DOMAIN] - 1
         x = torch.flatten(x, start_dim=1)
         final_logits = self.forward(x, domain_ids)
-        return torch.sigmoid(final_logits)
+        return final_logits
 
     def calculate_loss(self, interaction):
         labels = interaction[self.LABEL].float()
@@ -112,20 +112,20 @@ if __name__ == '__main__':
     manager = SchemaManager(settings_list, "aliccp-workdir", label_fields=["click", "purchase"], domain_fields="domain_id")
     from src.dataset.aliccp import AliCCPDataset
     import pandas as pd
-    # train_lf = AliCCPDataset.TRAIN_INTER_LF.with_columns(dataset=pl.lit("train"))
-    # test_lf = AliCCPDataset.TEST_INTER_LF.with_columns(dataset=pl.lit("test"))
-    # whole_lf = pl.concat([train_lf, test_lf], how="vertical")
-    # transformed_lf = manager.prepare_data(whole_lf)
-    # manager.generate_profiles(transformed_lf)
-    # train_lf = transformed_lf.filter(pl.col("dataset") == "train")
-    # valid_lf = transformed_lf.filter(pl.col("dataset") == "test")
-    # train_path, valid_path, _ = manager.save_as_dataset(train_lf, valid_lf)
 
     train_lf = AliCCPDataset.TRAIN_INTER_LF.with_columns(dataset=pl.lit("train"))
-    transformed_lf = manager.prepare_data(train_lf)
+    test_lf = AliCCPDataset.TEST_INTER_LF.with_columns(dataset=pl.lit("test"))
+    whole_lf = pl.concat([train_lf, test_lf], how="vertical")
+    transformed_lf = manager.prepare_data(whole_lf)
     manager.generate_profiles(transformed_lf)
+    train_lf = transformed_lf.filter(pl.col("dataset") == "train")
+    valid_lf = transformed_lf.filter(pl.col("dataset") == "test")
+    train_path, valid_path, _ = manager.save_as_dataset(train_lf, valid_lf)
+
+    # train_lf = AliCCPDataset.TRAIN_INTER_LF.with_columns(dataset=pl.lit("train"))
+    # transformed_lf = manager.prepare_data(train_lf)
+    # manager.generate_profiles(transformed_lf)
     print("架构编译成功，可供调用。")
-    exit()
     evaluator = LogDecorator(Evaluator("AUC"), save_path=manager.work_dir / "logs.log", title=Backbone.__name__)
     from src.betterbole.emb.emblayer import ProfileEncoder, InterSideEmb
 

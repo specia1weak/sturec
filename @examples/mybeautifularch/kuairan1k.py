@@ -22,6 +22,7 @@ from src.model.star import STAR, StarPle
 from src.model.shabtm import SharedBottomLess, SharedBottomPlus
 from src.model.utils.sequence import AttentionSequencePoolingLayer
 from src.utils import change_root_workdir
+from src.utils.optimize import create_optimizer_groups
 from src.utils.visualize import plot_bias_distributions, plot_sparsity_distributions, plot_sparsity_ecdf, \
     plot_power2_sparsity
 
@@ -51,9 +52,9 @@ class SimplePLE(nn.Module):
         self.LABEL = manager.label_field
 
     def concat_embed_input_fields(self, interaction):
-        user_emb = self.user_encoder.forward(interaction[self.manager.uid_field], flat2tensor=True)
-        item_emb = self.item_encoder.forward(interaction[self.manager.iid_field], flat2tensor=True)
-        inter_emb = self.inter_emb_layer.forward(interaction, flat2tensor=True)
+        user_emb = self.user_encoder.forward(interaction[self.manager.uid_field])
+        item_emb = self.item_encoder.forward(interaction[self.manager.iid_field])
+        inter_emb = self.inter_emb_layer.forward(interaction)
         return torch.cat([user_emb, item_emb, inter_emb], dim=-1)
 
     def forward(self, x, domain_ids):
@@ -113,10 +114,6 @@ if __name__ == '__main__':
         SparseEmbSetting("onehot_feat15", FeatureSource.USER, 16),
         SparseEmbSetting("onehot_feat16", FeatureSource.USER, 16),
         SparseEmbSetting("onehot_feat17", FeatureSource.USER, 16),
-        MinMaxDenseSetting("follow_user_num", FeatureSource.USER),
-        MinMaxDenseSetting("fans_user_num", FeatureSource.USER),
-        MinMaxDenseSetting("friend_user_num", FeatureSource.USER),
-        MinMaxDenseSetting("register_days", FeatureSource.USER),
 
         # SparseEmbSetting("author_id", FeatureSource.ITEM, 16),
         # SparseEmbSetting("music_id", FeatureSource.ITEM, 16),
@@ -140,7 +137,7 @@ if __name__ == '__main__':
         SparseEmbSetting("is_weekend", FeatureSource.INTERACTION, 16),
     ]
 
-    manager = SchemaManager(settings_list, "kuairand-workdir", time_field="time_ms", label_field="is_click", domain_field="tab")
+    manager = SchemaManager(settings_list, "kuairand-workdir", time_field="time_ms", label_fields="is_click", domain_fields="tab")
     from src.dataset.kuairand import KuaiRandDataset
     import pandas as pd
     user_lf = pl.scan_csv(KuaiRandDataset.USER_FEATURES)
@@ -165,34 +162,6 @@ if __name__ == '__main__':
         parsed_date.dt.weekday().is_in([6, 7]).cast(pl.UInt8).alias("is_weekend"),
         (pl.col("hourmin").cast(pl.Int32) // 100).cast(pl.UInt8).alias("hour")
     )
-
-    plot_bias_distributions(
-        lf=whole_lf,
-        uid_col="user_id",
-        iid_col="video_id",
-        label_col="is_click",
-        save_path=manager.work_dir / "bias_distribution.png",
-        min_item_interactions=10
-    )
-    plot_sparsity_distributions(
-        lf=whole_lf,
-        uid_col="user_id",
-        iid_col="video_id",
-        save_path=manager.work_dir / "sparsity_distribution.png",
-    )
-    plot_sparsity_ecdf(
-        lf=whole_lf,
-        uid_col="user_id",
-        iid_col="video_id",
-        save_path=manager.work_dir / "sparsity_ecdf.png"
-    )
-    plot_power2_sparsity(
-        lf=whole_lf,
-        uid_col="user_id",
-        iid_col="video_id",
-        save_path=manager.work_dir / "sparsity_power2.png"
-    )
-    exit()
     # ========================
     ## 增加新序列特征, 太复杂了，先不加
     # max_seq_len = 50
@@ -234,11 +203,12 @@ if __name__ == '__main__':
     from src.utils.time import CudaNamedTimer
     ntr = CudaNamedTimer()
     model = SimplePLE(manager).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-5)
+    named_parameters = create_optimizer_groups(model, weight_decay=1e-5, no_decay_keywords=["embedding"])
+    optimizer = torch.optim.Adam(named_parameters, lr=1e-3)
 
      # 良好的习惯：开启训练模式
     print("开始训练")
-    for epoch in range(10):
+    for epoch in range(20):
         total_loss = 0.
         batch_count = 0
         model.train()

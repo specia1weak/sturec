@@ -62,8 +62,8 @@ class SimpleBPR(nn.Module):
     def concat_embed_input_fields(self, interaction):
         uid = interaction[self.manager.uid_field]
         iid = interaction[self.manager.iid_field]
-        user_emb = self.user_profile_encoder.forward(uid, flat2tensor=True)
-        item_emb = self.item_profile_encoder.forward(iid, flat2tensor=True)
+        user_emb = self.user_profile_encoder.forward(uid, split_by=True)
+        item_emb = self.item_profile_encoder.forward(iid, split_by=True)
         inter_emb = self.inter_emb_layer.forward(interaction, flat2tensor=True)
 
         item_emb_seq, seq_len = self.seq_embeder.forward(interaction, flat2tensor=True)
@@ -117,8 +117,8 @@ class SimpleMLP(nn.Module):
     def concat_embed_input_fields(self, interaction):
         uid = interaction[self.manager.uid_field]
         iid = interaction[self.manager.iid_field]
-        uemb = self.user_profile_encoder.forward(uid, flat2tensor=True)
-        iemb = self.item_profile_encoder.forward(iid, flat2tensor=True)
+        uemb = self.user_profile_encoder.forward(uid, split_by=True)
+        iemb = self.item_profile_encoder.forward(iid, split_by=True)
         return torch.cat([uemb, iemb], dim=-1)
 
     def predict(self, interaction):

@@ -198,18 +198,19 @@ class QuantileEmbSetting(EmbSetting):
         self.is_fitted = True
 
     def get_transform_expr(self) -> pl.Expr:
-        if not self.boundaries:
-            # 数据全空的情况，全填 1
-            return pl.lit(1, dtype=pl.UInt32).alias(self.field_name)
-
-        # 强转类型 -> 空值填0 -> 按边界切分 -> 取出分箱标签 -> 转整型
-        labels = [str(i + 1) for i in range(len(self.boundaries) + 1)]
-        return pl.col(self.field_name) \
-            .cast(pl.Float64) \
-            .fill_null(0.0) \
-            .cut(breaks=self.boundaries, labels=labels, left_closed=False) \
-            .cast(pl.UInt32) \
+        if not self.is_fitted or not self.boundaries:
+            return pl.lit(0).alias(self.field_name)
+        num_buckets = len(self.boundaries) + 1
+        labels = [str(i) for i in range(1, num_buckets + 1)]
+        expr = (
+            pl.col(self.field_name)
+            .cut(breaks=self.boundaries, labels=labels)
+            .cast(pl.String) # 神奇的Polars特性，这一步你绝对想不到不变成String会出什么错误
+            .cast(pl.UInt32)
+            .fill_null(0)  # 异常或空值给 0
             .alias(self.field_name)
+        )
+        return expr
 
     def to_dict(self):
         d = super().to_dict()

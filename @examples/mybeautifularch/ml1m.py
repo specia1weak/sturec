@@ -29,7 +29,7 @@ from src.utils.monitor import ExplicitFeatureMonitor
 
 change_root_workdir()
 Backbone = MLP
-EMB_DIM = 8
+EMB_DIM = 16
 
 class SimpleBPR(nn.Module):
     def __init__(self, schema_manager: SchemaManager,):
@@ -61,11 +61,11 @@ class SimpleBPR(nn.Module):
     def concat_embed_input_fields(self, interaction):
         uid = interaction[self.manager.uid_field]
         iid = interaction[self.manager.iid_field]
-        user_emb = self.user_profile_encoder.forward(uid, flat2tensor=True)
-        item_emb = self.item_profile_encoder.forward(iid, flat2tensor=True)
-        inter_emb = self.inter_emb_layer.forward(interaction, flat2tensor=True)
+        user_emb = self.user_profile_encoder.forward(uid)
+        item_emb = self.item_profile_encoder.forward(iid)
+        inter_emb = self.inter_emb_layer.forward(interaction)
 
-        item_emb_seq, seq_len = self.seq_embeder.forward(interaction, flat2tensor=True)
+        item_emb_seq, seq_len = self.seq_embeder.forward(interaction)
         # seq_emb = self.seq_encoder.forward(item_emb_seq, seq_len)
         seq_emb = self.seq_encoder.forward(item_emb, item_emb_seq, seq_len)
         seq_emb = self.seq_ln(seq_emb)
@@ -116,8 +116,8 @@ class SimpleMLP(nn.Module):
     def concat_embed_input_fields(self, interaction):
         uid = interaction[self.manager.uid_field]
         iid = interaction[self.manager.iid_field]
-        uemb = self.user_profile_encoder.forward(uid, flat2tensor=True)
-        iemb = self.item_profile_encoder.forward(iid, flat2tensor=True)
+        uemb = self.user_profile_encoder.forward(uid)
+        iemb = self.item_profile_encoder.forward(iid)
         return torch.cat([uemb, iemb], dim=-1)
 
     def predict(self, interaction):
@@ -176,14 +176,14 @@ class SpecialModel(nn.Module):
     def concat_embed_input_fields(self, interaction):
         uid = interaction[self.manager.uid_field]
         iid = interaction[self.manager.iid_field]
-        user_emb_dict = self.user_profile_encoder.forward(uid)
+        user_emb_dict = self.user_profile_encoder.forward(uid, split_by="source")
         user_id_emb = user_emb_dict[FeatureSource.USER_ID]
         user_side_emb = user_emb_dict[FeatureSource.USER]
 
-        item_emb_dict = self.item_profile_encoder.forward(iid)
+        item_emb_dict = self.item_profile_encoder.forward(iid, split_by="source")
         item_id_emb = item_emb_dict[FeatureSource.ITEM_ID]
         item_side_emb = item_emb_dict[FeatureSource.ITEM]
-        inter_emb = self.inter_emb_layer.forward(interaction, flat2tensor=True)
+        inter_emb = self.inter_emb_layer.forward(interaction)
 
         whole_emb = torch.cat(self._drop_none([user_id_emb, user_side_emb, item_id_emb, item_side_emb, inter_emb]), dim=-1)
         share_emb = torch.cat(self._drop_none([user_side_emb, item_side_emb, inter_emb]) , dim=-1)
@@ -206,8 +206,8 @@ class SpecialModel(nn.Module):
 
         # 选择mask掉谁
         mask = torch.zeros_like(gates, dtype=torch.bool)
-        # mask[:, -2:] = True
-        # mask[:, 2] = True
+        mask[:, -4:] = True
+        mask[:, -2] = False
         gates = gates.masked_fill(mask, float('-inf'))
         # 结束
 
@@ -241,15 +241,15 @@ if __name__ == '__main__':
     settings_list = [
         user_setting,
         item_setting,
-        # SparseEmbSetting("age", FeatureSource.USER, 8),
+        SparseEmbSetting("age", FeatureSource.USER, 8),
         SparseEmbSetting("gender", FeatureSource.USER, 8),
-        # SparseEmbSetting("occupation", FeatureSource.USER, 8),
+        SparseEmbSetting("occupation", FeatureSource.USER, 8),
 
-        # SparseSetEmbSetting("genres", FeatureSource.ITEM, 8),
+        SparseSetEmbSetting("genres", FeatureSource.ITEM, 8),
         # IdSeqEmbSetting("history", "history_len", target_setting=item_setting, max_len=50)
     ]
 
-    manager = SchemaManager(settings_list, "movielens-workdir", time_field="timestamp", label_field="label", domain_field="gender")
+    manager = SchemaManager(settings_list, "movielens-workdir", time_field="timestamp", label_fields="label", domain_fields="gender")
     from src.dataset.movielens import MovieLensDataset
     import pandas as pd
     user_lf = pl.from_pandas(MovieLensDataset.USER_FEATURES_DF).lazy()
@@ -300,7 +300,7 @@ if __name__ == '__main__':
     #     item_id_lf=transformed_lf.select(pl.col(manager.iid_field)),
     #     distribution="uniform"
     # )
-    model = SimpleMLP(manager).to(device)
+    model = SpecialModel(manager).to(device)
 
 
     from src.utils.time import CudaNamedTimer
@@ -334,7 +334,8 @@ if __name__ == '__main__':
                 batch_count += 1
                 if batch_count % 100 == 0:
                     ntr.report()
-                    # print(model.gate_monitor.get_window_stats())
+                    if hasattr(model, "gate_monitor"):
+                        print(model.gate_monitor.get_window_stats())
                     print(f"Epoch {epoch}, Batch {batch_count}, Current Loss: {loss.item():.4f}")
 
         model.eval()

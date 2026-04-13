@@ -197,8 +197,7 @@ class SchemaManager:
             if lf is not None:
                 lf.sink_parquet(save_path)
 
-        ret_path = [path for lf, path in zip(all_lf, split_paths) if lf is not None]
-        return tuple(ret_path)
+        return split_paths
 
 
     def save_schema(self):
