@@ -55,9 +55,10 @@ class BoleEmbLayer(nn.Module):
                     continue
 
                 emb = self.emb_modules[setting.field_name](idx_tensor)
-                # 序列特征的 Pooling
-                if setting.emb_type in (EmbType.SPARSE_SEQ,):
-                    emb = torch.sum(emb, dim=-2)
+                # Set特征的 Pooling
+                if setting.emb_type in (EmbType.SPARSE_SET,):
+                    valid_len = (idx_tensor > 0).sum(dim=-1, keepdim=True).clamp(min=1)
+                    emb = torch.sum(emb, dim=-2) / valid_len
 
                 emb_list.append([setting.field_name, emb])
 
@@ -165,7 +166,7 @@ class ProfileEncoder(nn.Module):
             field = setting.field_name
 
             # --- 分支 A：处理变长序列特征 (必须 Padding) ---
-            if setting.emb_type == EmbType.SPARSE_SEQ:
+            if setting.emb_type in (EmbType.SPARSE_SEQ, EmbType.SPARSE_SET):
                 max_len = getattr(setting, 'max_len', 50)  # 从 setting 获取最大长度
                 padded_matrix = self._pad_sequences(df[field], max_len)
 

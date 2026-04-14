@@ -247,17 +247,19 @@ class QuantileEmbSetting(EmbSetting):
 
 
 class SparseSetEmbSetting(EmbSetting):
-    emb_type = EmbType.SPARSE_SEQ
+    emb_type = EmbType.SPARSE_SET
 
     def __init__(self,
                  field_name: str, source: FeatureSource,
                  embedding_size=16, num_embeddings=-1,
+                 max_len: int = 5,
                  is_string_format: bool = False,
                  separator: str = ",",
                  min_freq: int = 1,
                  use_oov: bool = False):
         super().__init__(field_name, embedding_size, source)
         self._num_embeddings = num_embeddings
+        self.max_len = max_len
         self.is_string_format = is_string_format
         self.separator = separator
         self.min_freq = min_freq
@@ -313,6 +315,7 @@ class SparseSetEmbSetting(EmbSetting):
                 .replace_strict(old=keys, new=vals, default=pl.lit(self.oov_idx, dtype=pl.UInt32))
                 .cast(pl.UInt32)
             )
+            .list.tail(self.max_len)
             .alias(self.field_name)
         )
         return mapped_expr
@@ -323,6 +326,7 @@ class SparseSetEmbSetting(EmbSetting):
         d["oov_idx"] = self.oov_idx
         d["use_oov"] = self.use_oov
         d["min_freq"] = self.min_freq
+        d["max_len"] = self.max_len
         return d
 
     def load_state(self, state_dict: Dict[str, Any]):
@@ -330,6 +334,7 @@ class SparseSetEmbSetting(EmbSetting):
         self.vocab = state_dict.get("vocab", {})
         self.use_oov = state_dict.get("use_oov", True)
         self.min_freq = state_dict.get("min_freq", 1)
+        self.max_len = state_dict.get("max_len", 5)
         self._num_embeddings = state_dict.get("num_embeddings", len(self.vocab) + (2 if self.use_oov else 1))
         self.oov_idx = state_dict.get("oov_idx", self._num_embeddings - 1 if self.use_oov else 0)
 
@@ -337,7 +342,7 @@ class SparseSetEmbSetting(EmbSetting):
     def from_dict(cls, data):
         obj = cls(
             data["field_name"], FeatureSource[data["feature_source"]],
-            data["embedding_size"], data.get("num_embeddings", -1),
+            data["embedding_size"], data.get("num_embeddings", -1), data.get("max_len", 5),
             data.get("is_string_format", False), data.get("separator", ","),
             min_freq=data.get("min_freq", 1), use_oov=data.get("use_oov", True)
         )
