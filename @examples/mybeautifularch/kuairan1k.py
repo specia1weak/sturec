@@ -28,32 +28,32 @@ from src.utils.visualize import plot_bias_distributions, plot_sparsity_distribut
 
 change_root_workdir()
 Backbone = PLE
+ID_EMB = 32
 
 class SimplePLE(nn.Module):
     def __init__(self, schema_manager: SchemaManager):
         super(SimplePLE, self).__init__()
         manager = schema_manager
-        self.user_encoder = ProfileEncoder(manager.settings, profile_path=manager.work_dir / manager.USER_PROFILE_NAME,
-                                      id_source=FeatureSource.USER_ID, feature_source=FeatureSource.USER).to(device)
-        self.item_encoder = ProfileEncoder(manager.settings, profile_path=manager.work_dir / manager.ITEM_PROFILE_NAME,
-                                      id_source=FeatureSource.ITEM_ID, feature_source=FeatureSource.ITEM).to(device)
+        self.user_emb_layer = UserSideEmb(manager.settings)
+        self.item_emb_layer = ItemSideEmb(manager.settings)
         self.inter_emb_layer = InterSideEmb(manager.settings)
 
         self.manager = manager
         self.input_dim = manager.source2emb_size(FeatureSource.USER_ID, FeatureSource.USER,
                                                  FeatureSource.ITEM_ID, FeatureSource.ITEM,
                                                  FeatureSource.INTERACTION)
-
-
         print(f"输入总维度{self.input_dim}")
         self.DOMAIN = manager.domain_field
-        num_domains = manager.nums(self.DOMAIN) - 1
+        domain_setting = manager.get_setting(self.DOMAIN)
+        pad_offset = 1 if domain_setting.padding_zero else 0
+        oov_offset = 1 if hasattr(domain_setting, 'oov_idx') and domain_setting.oov_idx > 0 else 0
+        num_domains = manager.nums(self.DOMAIN) - pad_offset - oov_offset
         self.ple = Backbone(self.input_dim, num_domains, expert_dims=(256, 128))
         self.LABEL = manager.label_field
 
     def concat_embed_input_fields(self, interaction):
-        user_emb = self.user_encoder.forward(interaction[self.manager.uid_field])
-        item_emb = self.item_encoder.forward(interaction[self.manager.iid_field])
+        user_emb = self.user_emb_layer.forward(interaction)
+        item_emb = self.item_emb_layer.forward(interaction)
         inter_emb = self.inter_emb_layer.forward(interaction)
         return torch.cat([user_emb, item_emb, inter_emb], dim=-1)
 
@@ -81,8 +81,8 @@ if __name__ == '__main__':
     auto_queue()
     device = "cuda"
 
-    user_setting = SparseEmbSetting("user_id", FeatureSource.USER_ID, 1) # 显存太低没法拉高dim
-    item_setting = SparseEmbSetting("video_id", FeatureSource.ITEM_ID, 1) # 显存太低没法拉高dim
+    user_setting = SparseEmbSetting("user_id", FeatureSource.USER_ID, ID_EMB, min_freq=10, use_oov=True)
+    item_setting = SparseEmbSetting("video_id", FeatureSource.ITEM_ID, ID_EMB, min_freq=10, use_oov=True)
     settings_list = [
         user_setting,
         item_setting,
@@ -115,8 +115,8 @@ if __name__ == '__main__':
         SparseEmbSetting("onehot_feat16", FeatureSource.USER, 16),
         SparseEmbSetting("onehot_feat17", FeatureSource.USER, 16),
 
-        # SparseEmbSetting("author_id", FeatureSource.ITEM, 16),
-        # SparseEmbSetting("music_id", FeatureSource.ITEM, 16),
+        SparseEmbSetting("author_id", FeatureSource.ITEM, ID_EMB, min_freq=10, use_oov=True),
+        SparseEmbSetting("music_id", FeatureSource.ITEM, ID_EMB, min_freq=10, use_oov=True),
         SparseEmbSetting("video_type", FeatureSource.ITEM, 16),
         SparseEmbSetting("music_type", FeatureSource.ITEM, 16),
         SparseEmbSetting("visible_status", FeatureSource.ITEM, 16),
@@ -129,9 +129,6 @@ if __name__ == '__main__':
             is_string_format=True, separator=","
         ),
 
-        # 创造的
-        # IdSeqEmbSetting("history_videos", FeatureSource.INTERACTION, item_setting,
-        #                 is_string_format=False),
         SparseEmbSetting("day_of_week", FeatureSource.INTERACTION, 16),
         SparseEmbSetting("hour", FeatureSource.INTERACTION, 16),
         SparseEmbSetting("is_weekend", FeatureSource.INTERACTION, 16),
@@ -142,7 +139,6 @@ if __name__ == '__main__':
     import pandas as pd
     user_lf = pl.scan_csv(KuaiRandDataset.USER_FEATURES)
     item_lf = pl.scan_csv(KuaiRandDataset.VIDEO_FEATURES)
-    # inter_lf = pl.scan_csv(KuaiRand.STD_LOG_FORMER_DATA_P2)
     inter_lf = pl.scan_csv([KuaiRandDataset.STD_LOG_FORMER_DATA_P1, KuaiRandDataset.STD_LOG_FORMER_DATA_P2, KuaiRandDataset.RAND_LOG_FORMER_DATA])
     whole_lf: pl.LazyFrame = inter_lf.join(item_lf, on="video_id", how="left").join(user_lf, on="user_id", how="left")
     ## 排除部分场景数据
@@ -153,6 +149,8 @@ if __name__ == '__main__':
         .head(5)
         .select("tab")
     )
+    print(top_5_domains.collect())
+
     whole_lf = whole_lf.join(top_5_domains, on="tab", how="semi")
 
     ## 增加新特征
@@ -163,26 +161,23 @@ if __name__ == '__main__':
         (pl.col("hourmin").cast(pl.Int32) // 100).cast(pl.UInt8).alias("hour")
     )
     # ========================
-    ## 增加新序列特征, 太复杂了，先不加
-    # max_seq_len = 50
-    # whole_lf = extract_history_items(whole_lf, max_seq_len=50,
-    #                          user_col="user_id",
-    #                          time_col="time_ms",
-    #                          item_col="video_id",
-    #                          seq_col="history_videos")
     ## 处理中
-    transformed_lf = manager.prepare_data(whole_lf)
+    train_raw = whole_lf.filter(pl.col("date") <= 20220506)
+    valid_raw = whole_lf.filter(pl.col("date") == 20220507)  # 仅用 20220507
+    test_raw = whole_lf.filter(pl.col("date") == 20220508)  # 20220508 作 test
 
-    manager.generate_profiles(transformed_lf)
-    train_lf = transformed_lf.filter(pl.col("is_rand") == 0)
-    valid_lf = transformed_lf.filter(pl.col("is_rand") == 1)
+    manager.fit(train_raw)
+    train_lf = manager.transform(train_raw)
+    valid_lf = manager.transform(valid_raw)
+    test_lf = manager.transform(test_raw)
+
     print(train_lf.select("date").head(5).collect())
     print(valid_lf.select("date").head(5).collect())
-    # train_path, valid_path, _ = manager.split_dataset(transformed_lf, strategy="random_ratio")
-    train_path, valid_path, _ = manager.save_as_dataset(train_lf, valid_lf)
+    train_path, valid_path, _ = manager.save_as_dataset(train_lf, valid_lf, test_lf)
     print("架构编译成功，可供调用。")
+
     evaluator = LogDecorator(Evaluator("AUC"), save_path=manager.work_dir / "logs.log", title=Backbone.__name__)
-    from src.betterbole.emb.emblayer import ProfileEncoder, InterSideEmb
+    from src.betterbole.emb.emblayer import ProfileEncoder, InterSideEmb, UserSideEmb, ItemSideEmb
 
     ps_dataset = ParquetStreamDataset(train_path, manager.fields()) # 更少的读取
     ps_valid = ParquetStreamDataset(valid_path, manager.fields(), batch_size=4096 * 2, shuffle_and_drop_last=False) # 更少的读取
@@ -193,17 +188,10 @@ if __name__ == '__main__':
         pin_memory=True  # 测试时不占用显存，如果是真实 GPU 训练设为 True
     )
 
-    # puis = PolarsUISampler(
-    #         num_items=item_setting.num_embeddings,
-    #         user_id_lf=transformed_lf.select(pl.col(manager.uid_field)),
-    #         item_id_lf=transformed_lf.select(pl.col(manager.iid_field)),
-    #         distribution="uniform"
-    #     )
-
     from src.utils.time import CudaNamedTimer
     ntr = CudaNamedTimer()
     model = SimplePLE(manager).to(device)
-    named_parameters = create_optimizer_groups(model, weight_decay=1e-5, no_decay_keywords=["embedding"])
+    named_parameters = create_optimizer_groups(model, weight_decay=1e-6, no_decay_keywords=["embedding"])
     optimizer = torch.optim.Adam(named_parameters, lr=1e-3)
 
      # 良好的习惯：开启训练模式

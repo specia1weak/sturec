@@ -70,9 +70,10 @@ class SchemaManager:
         output_dir.mkdir(exist_ok=True)
         return output_dir
 
+
     def prepare_data(self, lazy_df: pl.LazyFrame, output_dir: Union[Path, str]=None, redo=False):
         """
-        全自动化流程：自动判断输入文件类型，自动构建计算图
+        不建议使用，全自动化流程：自动判断输入文件类型，自动构建计算图
         """
         output_parquet = self._parse_output_dir(output_dir) / self.WHOLE_DATA_NAME
         if self.meta_filepath.exists() and output_parquet.exists() and not redo:
@@ -111,12 +112,40 @@ class SchemaManager:
         print("[+] 预处理全流程结束！")
         return pl.scan_parquet(output_parquet)
 
-    def _make_checkpoint(self, lazy_df):
-        temp_checkpoint_path = self.work_dir / "temp_checkpoint.parquet"
+    def fit(self, train_raw_lf: pl.LazyFrame):
+        """
+        阶段一：仅使用训练集拟合统计量和词表
+        """
+        if self.meta_filepath.exists():
+            self.load_schema()
+            return
+        print("[*] 正在执行计算图截断，避免重复计算...")
+        print("[*] 启动单次表扫描获取统计量...")
+        fit_exprs = [expr for s in self.settings if not s.is_fitted for expr in s.get_fit_exprs()]
+        if fit_exprs:
+            fit_result = train_raw_lf.select(fit_exprs).collect()
+            for setting in self.settings:
+                if not setting.is_fitted:
+                    setting.parse_fit_result(fit_result)
+            print("[+] 词表与映射规则构建完成。")
+        self.save_schema()
+
+    def transform(self, raw_lf: pl.LazyFrame) -> pl.LazyFrame:
+        """
+        阶段二：根据已固化的 Schema 进行流式转换
+        """
+        transform_exprs = [
+            s.get_transform_expr() for s in self.settings if s.emb_type != EmbType.UNKNOWN
+        ]
+        return raw_lf.with_columns(transform_exprs)
+
+    def _make_checkpoint(self, lazy_df, file_name="temp_checkpoint.parquet"):
+        temp_checkpoint_path = self.work_dir / file_name
         lazy_df.sink_parquet(temp_checkpoint_path)
         lazy_df = pl.scan_parquet(temp_checkpoint_path)
         return lazy_df
 
+    # NOTE 不推荐使用
     def generate_profiles(self, lazy_df: pl.LazyFrame, output_dir: str=None, redo=False):
         """
         利用 FeatureSource 统筹提取并保存静态画像表 (Profile)
@@ -178,6 +207,9 @@ class SchemaManager:
         )
         # 策略实例化与执行
         splitter = StrategyClass(context=split_ctx)
+        kwargs.update({
+            "time_field": self.time_field or kwargs.get("time_field")
+        })
         return splitter.split(lf, output_dir, redo, **kwargs)
 
     def save_as_dataset(self, train_lf, valid_lf=None, test_lf=None, output_dir: str = None, redo: bool = False):

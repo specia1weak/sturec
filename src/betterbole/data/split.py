@@ -28,14 +28,6 @@ class LooSplitStrategy(BaseSplitStrategy):
         k_core = kwargs.get('k_core', 3)
         print(f"[*] 正在执行 LOO 切分，K-core={k_core}...")
 
-        test_path = output_dir / "test_loo.parquet"
-        valid_path = output_dir / "valid_loo.parquet"
-        train_path = output_dir / "train_loo.parquet"
-        split_paths = str(train_path), str(valid_path), str(test_path)
-
-        if not redo and (train_path.exists() or valid_path.exists() or test_path.exists()):
-            return split_paths
-
         # 直接使用 ctx 里的纯数据字段
         processed_lf = lf.with_columns([
             pl.count(self.ctx.iid_field).over(self.ctx.uid_field).alias("user_seq_len"),
@@ -48,14 +40,14 @@ class LooSplitStrategy(BaseSplitStrategy):
         # 调用被注入进来的回调函数，不关心它在主类里是怎么实现的
         checkpoint_lf = self.ctx.checkpoint_fn(processed_lf)
 
-        (checkpoint_lf.filter(pl.col("reverse_rank") == 1).select(
-            pl.all().exclude("user_seq_len", "reverse_rank")).sink_parquet(test_path))
-        (checkpoint_lf.filter(pl.col("reverse_rank") == 2).select(
-            pl.all().exclude("user_seq_len", "reverse_rank")).sink_parquet(valid_path))
-        (checkpoint_lf.filter(pl.col("reverse_rank") >= 3).select(
-            pl.all().exclude("user_seq_len", "reverse_rank")).sink_parquet(train_path))
+        train_lf = checkpoint_lf.filter(pl.col("reverse_rank") >= 3).select(
+            pl.all().exclude("user_seq_len", "reverse_rank"))
+        valid_lf = checkpoint_lf.filter(pl.col("reverse_rank") == 2).select(
+            pl.all().exclude("user_seq_len", "reverse_rank"))
+        test_lf = checkpoint_lf.filter(pl.col("reverse_rank") == 1).select(
+            pl.all().exclude("user_seq_len", "reverse_rank"))
 
-        return split_paths
+        return train_lf, valid_lf, test_lf
 
 
 class SequentialRatioStrategy(BaseSplitStrategy):
@@ -66,70 +58,46 @@ class SequentialRatioStrategy(BaseSplitStrategy):
         if self.ctx.time_field is None:
             raise RuntimeError("执行 sequential_ratio 切分必须在 SplitContext 中指定 time_field！")
 
-        train_path = output_dir / "train_seq_ratio.parquet"
-        valid_path = output_dir / "valid_seq_ratio.parquet"
-        test_path = output_dir / "test_seq_ratio.parquet"
-        split_paths = str(train_path), str(valid_path), str(test_path)
-
-        if not redo and (train_path.exists() or valid_path.exists() or test_path.exists()):
-            return split_paths
-
         print(
             f"[*] 正在执行顺序时序比例 (Sequential Ratio) 切分，比例: {train_ratio}:{valid_ratio}:{1 - train_ratio - valid_ratio:.2f}...")
 
         # 1. 全局按时间升序排序 (历史在前，未来在后)
         processed_lf = lf.sort(self.ctx.time_field)
-
         # 2. 调用注入的 checkpoint 动作，落盘锁死物理时间顺序
         checkpoint_lf = self.ctx.checkpoint_fn(processed_lf)
-
         # 3. 添加连续的物理行号
         checkpoint_lf = checkpoint_lf.with_row_index("row_idx")
-
         # 4. 获取精确切分点 (对 checkpoint_lf 做 count 是瞬间完成的)
         total_rows = checkpoint_lf.select(pl.len()).collect().item()
         train_idx = int(total_rows * train_ratio)
         valid_idx = train_idx + int(total_rows * valid_ratio)
 
-        # 5. 按行号区间落盘，并在写入前丢弃辅助的行号列
-        (checkpoint_lf.filter(pl.col("row_idx") < train_idx)
-         .drop("row_idx").sink_parquet(train_path))
-        (checkpoint_lf.filter((pl.col("row_idx") >= train_idx) & (pl.col("row_idx") < valid_idx))
-         .drop("row_idx").sink_parquet(valid_path))
-        (checkpoint_lf.filter(pl.col("row_idx") >= valid_idx)
-         .drop("row_idx").sink_parquet(test_path))
+        # 5. 按行号区间过滤，并丢弃辅助的行号列
+        train_lf = checkpoint_lf.filter(pl.col("row_idx") < train_idx).drop("row_idx")
+        valid_lf = checkpoint_lf.filter((pl.col("row_idx") >= train_idx) & (pl.col("row_idx") < valid_idx)).drop("row_idx")
+        test_lf = checkpoint_lf.filter(pl.col("row_idx") >= valid_idx).drop("row_idx")
 
-        return split_paths
+        return train_lf, valid_lf, test_lf
 
 
 class TimeSplitStrategy(BaseSplitStrategy):
     def split(self, lf: pl.LazyFrame, output_dir: Path, redo: bool, **kwargs) -> tuple:
         # 这个策略特有的必要参数
-        train_end = kwargs.get('train_end')
-        valid_end = kwargs.get('valid_end')
+        valid_start = kwargs.get('valid_start')
+        test_start = kwargs.get('test_start')
 
-        if train_end is None or valid_end is None:
-            raise RuntimeError("执行 time 切分必须在 kwargs 中传入 train_end 和 valid_end！")
+        if valid_start is None or test_start is None:
+            raise RuntimeError("执行 time 切分必须在 kwargs 中传入 valid_start 和 test_start！")
         if self.ctx.time_field is None:
             raise RuntimeError("执行 time 切分必须在 SplitContext 中指定 time_field！")
-
-        train_path = output_dir / "train_time.parquet"
-        valid_path = output_dir / "valid_time.parquet"
-        test_path = output_dir / "test_time.parquet"
-        split_paths = str(train_path), str(valid_path), str(test_path)
-
-        if not redo and (train_path.exists() or valid_path.exists() or test_path.exists()):
-            return split_paths
-
-        print(f"[*] 正在执行绝对时间阈值 (Time) 切分，train_end={train_end}, valid_end={valid_end}...")
+        print(f"[*] 正在执行绝对时间阈值 (Time) 切分，train_end={valid_start}, valid_end={test_start}...")
         time_expr = pl.col(self.ctx.time_field)
-
         # 除非上游的 lf 经历了极端复杂的 join，通常不用在这层做 checkpoint
-        lf.filter(time_expr < train_end).sink_parquet(train_path)
-        lf.filter((time_expr >= train_end) & (time_expr < valid_end)).sink_parquet(valid_path)
-        lf.filter(time_expr >= valid_end).sink_parquet(test_path)
+        train_lf = lf.filter(time_expr < valid_start)
+        valid_lf = lf.filter((time_expr >= valid_start) & (time_expr < test_start))
+        test_lf = lf.filter(time_expr >= test_start)
 
-        return split_paths
+        return train_lf, valid_lf, test_lf
 
 
 class RandomRatioStrategy(BaseSplitStrategy):
@@ -137,14 +105,6 @@ class RandomRatioStrategy(BaseSplitStrategy):
         train_ratio = kwargs.get('train_ratio', 0.8)
         valid_ratio = kwargs.get('valid_ratio', 0.1)
         group_by = kwargs.get('group_by', None)
-
-        train_path = output_dir / "train_rand_ratio.parquet"
-        valid_path = output_dir / "valid_rand_ratio.parquet"
-        test_path = output_dir / "test_rand_ratio.parquet"
-        split_paths = str(train_path), str(valid_path), str(test_path)
-
-        if not redo and (train_path.exists() or valid_path.exists() or test_path.exists()):
-            return split_paths
 
         group_msg = f"按 '{group_by}' 分组" if group_by else "全局"
         print(
@@ -173,13 +133,10 @@ class RandomRatioStrategy(BaseSplitStrategy):
         checkpoint_lf = self.ctx.checkpoint_fn(processed_lf)
         # 5. 根据精准的整数索引进行过滤，最后再抛弃辅助列
         temp_cols = ["row_idx", "train_idx", "valid_idx"]
-        (checkpoint_lf.filter(pl.col("row_idx") < pl.col("train_idx"))
-         .drop(temp_cols).sink_parquet(train_path))
-        (checkpoint_lf.filter((pl.col("row_idx") >= pl.col("train_idx")) & (pl.col("row_idx") < pl.col("valid_idx")))
-         .drop(temp_cols).sink_parquet(valid_path))
-        (checkpoint_lf.filter(pl.col("row_idx") >= pl.col("valid_idx"))
-         .drop(temp_cols).sink_parquet(test_path))
-        return split_paths
+        train_lf = checkpoint_lf.filter(pl.col("row_idx") < pl.col("train_idx")).drop(temp_cols)
+        valid_lf = checkpoint_lf.filter((pl.col("row_idx") >= pl.col("train_idx")) & (pl.col("row_idx") < pl.col("valid_idx"))).drop(temp_cols)
+        test_lf = checkpoint_lf.filter(pl.col("row_idx") >= pl.col("valid_idx")).drop(temp_cols)
+        return train_lf, valid_lf, test_lf
 
 SPLIT_STRATEGIES = {
     "loo": LooSplitStrategy,

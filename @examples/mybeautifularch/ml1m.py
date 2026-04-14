@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+from mpmath import mnorm
 from torch.nn import BatchNorm1d
 from torch.utils.data import DataLoader
 
@@ -8,6 +9,7 @@ from src.betterbole.emb.schema import SparseEmbSetting, QuantileEmbSetting, \
     SparseSetEmbSetting, IdSeqEmbSetting, MinMaxDenseSetting
 from src.betterbole.emb import SchemaManager
 import polars as pl
+from src.utils.visualize import plot_power2_sparsity
 from src.betterbole.enum_type import FeatureSource
 from src.betterbole.evaluate.evaluator import Evaluator, LogDecorator
 from src.betterbole.interaction import Interaction
@@ -26,6 +28,7 @@ from src.model.utils.general import MLP, ModuleFactory
 from src.model.utils.sequence import AttentionSequencePoolingLayer, SequencePoolingLayer
 from src.utils import change_root_workdir
 from src.utils.monitor import ExplicitFeatureMonitor
+from src.utils.optimize import create_optimizer_groups
 
 change_root_workdir()
 Backbone = MLP
@@ -134,8 +137,8 @@ class SpecialModel(nn.Module):
     def __init__(self, schema_manager: SchemaManager,):
         super(SpecialModel, self).__init__()
         manager = schema_manager
-        self.user_profile_encoder = UserProfileEncoder(manager.settings, manager.work_dir / manager.USER_PROFILE_NAME)
-        self.item_profile_encoder = ItemProfileEncoder(manager.settings, manager.work_dir / manager.ITEM_PROFILE_NAME)
+        self.user_profile_encoder = UserSideEmb(manager.settings)
+        self.item_profile_encoder = ItemSideEmb(manager.settings)
         self.inter_emb_layer = InterSideEmb(manager.settings)
 
         self.manager = manager
@@ -174,13 +177,11 @@ class SpecialModel(nn.Module):
         return [emb for emb in list if emb is not None]
 
     def concat_embed_input_fields(self, interaction):
-        uid = interaction[self.manager.uid_field]
-        iid = interaction[self.manager.iid_field]
-        user_emb_dict = self.user_profile_encoder.forward(uid, split_by="source")
+        user_emb_dict = self.user_profile_encoder.forward(interaction, split_by="source")
         user_id_emb = user_emb_dict[FeatureSource.USER_ID]
         user_side_emb = user_emb_dict[FeatureSource.USER]
 
-        item_emb_dict = self.item_profile_encoder.forward(iid, split_by="source")
+        item_emb_dict = self.item_profile_encoder.forward(interaction, split_by="source")
         item_id_emb = item_emb_dict[FeatureSource.ITEM_ID]
         item_side_emb = item_emb_dict[FeatureSource.ITEM]
         inter_emb = self.inter_emb_layer.forward(interaction)
@@ -236,8 +237,8 @@ if __name__ == '__main__':
     auto_queue()
     device = "cuda"
 
-    user_setting = SparseEmbSetting("user_id", FeatureSource.USER_ID, EMB_DIM) # 显存太低没法拉高dim
-    item_setting = SparseEmbSetting("movie_id", FeatureSource.ITEM_ID, EMB_DIM) # 显存太低没法拉高dim
+    user_setting = SparseEmbSetting("user_id", FeatureSource.USER_ID, EMB_DIM, min_freq=10,use_oov=True) # 显存太低没法拉高dim
+    item_setting = SparseEmbSetting("movie_id", FeatureSource.ITEM_ID, EMB_DIM, min_freq=10, use_oov=True) # 显存太低没法拉高dim
     settings_list = [
         user_setting,
         item_setting,
@@ -245,7 +246,7 @@ if __name__ == '__main__':
         SparseEmbSetting("gender", FeatureSource.USER, 8),
         SparseEmbSetting("occupation", FeatureSource.USER, 8),
 
-        SparseSetEmbSetting("genres", FeatureSource.ITEM, 8),
+        SparseSetEmbSetting("genres", FeatureSource.ITEM, 8, min_freq=10, use_oov=True),
         # IdSeqEmbSetting("history", "history_len", target_setting=item_setting, max_len=50)
     ]
 
@@ -266,19 +267,14 @@ if __name__ == '__main__':
         .otherwise(2)
         .alias("domain_id")
     )
+    plot_power2_sparsity(whole_lf, "user_id", "movie_id", manager.work_dir / "sparsity_power2.png")
+    train_raw, valid_raw, test_raw = manager.split_dataset(whole_lf, strategy="sequential_ratio")
+    manager.fit(train_raw)
+    train_lf = manager.transform(train_raw)
+    valid_lf = manager.transform(valid_raw)
+    test_lf = manager.transform(test_raw)
 
-    max_seq_len = 50
-    whole_lf = extract_history_items(whole_lf, max_seq_len=50,
-                                     user_col="user_id",
-                                     time_col="timestamp",
-                                     item_col="movie_id",
-                                     seq_col="history",
-                                     seq_len_col="history_len")
-
-    transformed_lf = manager.prepare_data(whole_lf)
-    manager.generate_profiles(transformed_lf)
-    train_path, valid_path, _ = manager.split_dataset(transformed_lf, strategy="random_ratio")
-    # train_path, valid_path, _ = manager.save_as_dataset(train_lf, valid_lf)
+    train_path, valid_path, _ = manager.save_as_dataset(train_lf, valid_lf, test_lf)
     print("架构编译成功，可供调用。")
     evaluator = LogDecorator(Evaluator("AUC"),
                              save_path=manager.work_dir / "logs4backbone.log", title=f"DIM={EMB_DIM},{Backbone.__name__}")
@@ -305,7 +301,8 @@ if __name__ == '__main__':
 
     from src.utils.time import CudaNamedTimer
     ntr = CudaNamedTimer()
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-5)
+    named_parameters = create_optimizer_groups(model, weight_decay=1e-5, no_decay_keywords=[]) # 对Embedding施加wd反而更好
+    optimizer = torch.optim.Adam(named_parameters, lr=1e-3)
     for epoch in range(50):
         total_loss = 0.
         batch_count = 0
