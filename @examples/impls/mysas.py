@@ -8,7 +8,7 @@ from torch import nn, optim
 import torch.nn.functional as F
 from recbole.config import Config
 from recbole.data import create_dataset, data_preparation
-from src.utils import set_all
+from betterbole.utils import set_all
 set_all()
 
 def compute_attn(q, k: torch.Tensor, v, mask=None):
@@ -234,7 +234,7 @@ if __name__ == '__main__':
     optimizer = optim.Adam(model.parameters(), lr=config['learning_rate'])
     trainer = Trainer(config, model)
 
-    print(f"训练集大小: {len(train_data.dataset)}, 序列最大长度: {config['MAX_ITEM_LIST_LENGTH']}")
+    print(f"训练集大小: {len(train_data.DATASET)}, 序列最大长度: {config['MAX_ITEM_LIST_LENGTH']}")
 
     for epoch in range(50):
         model.train()

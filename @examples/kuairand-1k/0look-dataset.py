@@ -2,7 +2,7 @@ from recbole.config import Config
 from recbole.data import create_dataset, data_preparation
 from recbole.data.dataset import Dataset
 
-from src.utils import set_all
+from betterbole.utils import set_all
 set_all()
 
 def build_dataset(device="cpu"):

@@ -25,7 +25,7 @@ class BaseEvaluator:
 
 
 import numpy as np
-from src.betterbole.evaluate.metrics import METRIC_REGISTRY
+from betterbole.evaluate.metrics import METRIC_REGISTRY
 
 class PointWiseEvaluator(BaseEvaluator):
     def __init__(self, metrics):

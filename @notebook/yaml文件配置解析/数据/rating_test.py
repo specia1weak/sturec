@@ -1,7 +1,7 @@
 import os
 from recbole.config import Config
 from recbole.data import create_dataset, data_preparation
-from src.boleutils import ignore_future_warning
+from betterbole.utils import ignore_future_warning
 ignore_future_warning()
 # 1. 生成测试数据 (包含 5 个交互，满足序列划分的最低要求)
 os.makedirs('test', exist_ok=True)

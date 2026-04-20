@@ -1,5 +1,5 @@
 def make_LS_dataset():
-    from src.utils import change_root_workdir, ignore_future_warning
+    from betterbole.utils import change_root_workdir, ignore_future_warning
     change_root_workdir()
     ignore_future_warning()
     from recbole.config import Config

@@ -6,7 +6,7 @@ from recbole.model.abstract_recommender import ContextRecommender
 from recbole.trainer import Trainer
 from recbole.utils import InputType
 
-from src.boleutils import ignore_future_warning, change_root_workdir
+from betterbole.utils import ignore_future_warning, change_root_workdir
 from torch import nn, optim
 
 change_root_workdir()

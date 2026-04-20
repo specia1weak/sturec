@@ -3,17 +3,38 @@ from typing import Iterable, List, Dict, Union, Literal
 import numpy as np
 import pandas as pd
 import torch
-from src.betterbole.emb.schema import EmbType, EmbSetting, IdSeqEmbSetting
-from src.betterbole.enum_type import FeatureSource
+from betterbole.emb.schema import EmbType, EmbSetting, IdSeqEmbSetting, SparseSetEmbSetting
+from betterbole.core.enum_type import FeatureSource
 from torch import nn
 
-from src.betterbole.interaction import Interaction
+from betterbole.core.interaction import Interaction
 
 
 # 将settings中的col分成用户侧和物品侧，BoleEmbLayer会把宽表Interaction 变成对应的Dict Embedding
 
 
 SPLIT_METHODS = Literal["source", "name", "none", None]
+
+
+class RecEmbedding(nn.Module):
+    def __init__(self, num_embeddings, embedding_dim, padding_idx=0, init_std=1e-4):
+        super(RecEmbedding, self).__init__()
+        self.embedding = nn.Embedding(
+            num_embeddings=num_embeddings,
+            embedding_dim=embedding_dim,
+            padding_idx=padding_idx
+        )
+        self.init_std = init_std
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        nn.init.normal_(self.embedding.weight, mean=0.0, std=self.init_std)
+        if self.embedding.padding_idx is not None:
+            nn.init.constant_(self.embedding.weight[self.embedding.padding_idx], 0.0)
+
+    def forward(self, x):
+        return self.embedding(x)
+
 
 class BoleEmbLayer(nn.Module):
     def __init__(self, emb_settings: Iterable[EmbSetting]):
@@ -29,8 +50,8 @@ class BoleEmbLayer(nn.Module):
 
             if setting.emb_type in (EmbType.DENSE,):
                 continue
-            # 所有的特征 (不管是数值分箱还是离散ID)，现在都可以统一用 nn.Embedding
-            self.emb_modules[setting.field_name] = nn.Embedding(
+            # 所有的特征 (不管是数值分箱还是离散ID)，现在都可以统一用 RecEmbedding
+            self.emb_modules[setting.field_name] = RecEmbedding(
                 num_embeddings=setting.num_embeddings,
                 embedding_dim=setting.embedding_size,
                 padding_idx={True: 0, False: None}[setting.padding_zero]
@@ -56,9 +77,10 @@ class BoleEmbLayer(nn.Module):
 
                 emb = self.emb_modules[setting.field_name](idx_tensor)
                 # Set特征的 Pooling
-                if setting.emb_type in (EmbType.SPARSE_SET,):
-                    valid_len = (idx_tensor > 0).sum(dim=-1, keepdim=True).clamp(min=1)
-                    emb = torch.sum(emb, dim=-2) / valid_len
+                if isinstance(setting, SparseSetEmbSetting):
+                    emb = torch.sum(emb, dim=-2) 
+                    if setting.agg == "mean":
+                        emb = emb / (idx_tensor > 0).sum(dim=-1, keepdim=True).clamp(min=1)
 
                 emb_list.append([setting.field_name, emb])
 

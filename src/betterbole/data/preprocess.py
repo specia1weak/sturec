@@ -1,15 +1,17 @@
 from abc import ABC
 from typing import List
-from src.betterbole.emb.schema import EmbSetting, SparseEmbSetting, SparseSetEmbSetting, IdSeqEmbSetting, SchemaManager
-from src.betterbole.enum_type import FeatureSource
+
+from betterbole.emb import SchemaManager
+from betterbole.emb.schema import EmbSetting, SparseEmbSetting, SparseSetEmbSetting, IdSeqEmbSetting
+from betterbole.core.enum_type import FeatureSource
 import polars as pl
 
-from src.betterbole.plutils import extract_history_sequence
+from betterbole.utils.sequential import extract_history_items
 
 
 class PreProcessPipeline(ABC):
     def load_and_process_lf(self)->pl.LazyFrame:
-        from src.convert.kuairand import KuaiRand
+        from betterbole.convert.kuairand import KuaiRand
         user_lf = pl.scan_csv(KuaiRand.USER_FEATURES)
         item_lf = pl.scan_csv(KuaiRand.VIDEO_FEATURES)
         inter_lf = pl.scan_csv(KuaiRand.STD_LOG_FORMER_DATA)
@@ -34,7 +36,7 @@ class PreProcessPipeline(ABC):
         )
         ## 增加新序列特征
         max_seq_len = 50
-        whole_lf = extract_history_sequence(whole_lf, max_seq_len=50,
+        whole_lf = extract_history_items(whole_lf, max_seq_len=50,
                                             user_col="user_id",
                                             time_col="time_ms",
                                             item_col="video_id",

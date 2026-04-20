@@ -191,7 +191,7 @@ train_cfg = {
 }
 
 if __name__ == '__main__':
-    from src.utils import change_root_workdir, ignore_future_warning
+    from betterbole.utils import change_root_workdir, ignore_future_warning
 
     change_root_workdir()
     ignore_future_warning()
@@ -209,7 +209,7 @@ if __name__ == '__main__':
     optimizer = optim.Adam(model.parameters(), lr=config['learning_rate'])
     trainer = Trainer(config, model)
 
-    print(f"训练集大小: {len(train_data.dataset)}, 序列最大长度: {config['MAX_ITEM_LIST_LENGTH']}")
+    print(f"训练集大小: {len(train_data.DATASET)}, 序列最大长度: {config['MAX_ITEM_LIST_LENGTH']}")
 
     for epoch in range(50):
         model.train()

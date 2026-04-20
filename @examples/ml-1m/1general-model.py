@@ -58,7 +58,7 @@ train_cfg = {
 }
 
 if __name__ == '__main__':
-    from src.utils import change_root_workdir, ignore_future_warning
+    from betterbole.utils import change_root_workdir, ignore_future_warning
     change_root_workdir()
     ignore_future_warning()
 

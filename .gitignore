@@ -37,7 +37,6 @@ ENV/
 # === 5. 数据与模型权重（只保留路径占位） ===
 /data/
 !data/.gitkeep
-datasets/
 !datasets/.gitkeep
 *.zip
 *.tar
@@ -112,3 +111,5 @@ docker-compose.override.yml
 log_tensorboard/
 Diff-MSR-main/
 Crocodile-main/
+reference-projects/
+workspace/

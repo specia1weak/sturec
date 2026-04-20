@@ -18,10 +18,10 @@ from recbole.data import create_dataset, data_preparation
 from torch.nn.utils.rnn import pad_sequence
 from tqdm import tqdm
 
-from src.utils import set_all
-from src.utils.emb import BoleEmbLayer, EmbSetting, SparseEmbSetting, ItemSeqEmbSetting, UserSideEmb, ItemSideEmb, \
+from betterbole.utils import set_all
+from betterbole.utils.emb import BoleEmbLayer, EmbSetting, SparseEmbSetting, ItemSeqEmbSetting, UserSideEmb, ItemSideEmb, \
     SparseSeqEmbSetting
-from src.utils.time import NamedTimer
+from betterbole.utils.time import NamedTimer
 timer = NamedTimer()
 set_all()
 
@@ -357,7 +357,7 @@ if __name__ == '__main__':
     iq = InterQuery(dataset, config["MAX_ITEM_LIST_LENGTH"])
     trainer = CustomTrainer(config, model)
 
-    print(f"训练集大小: {len(train_data.dataset)}, 序列最大长度: {config['MAX_ITEM_LIST_LENGTH']}")
+    print(f"训练集大小: {len(train_data.DATASET)}, 序列最大长度: {config['MAX_ITEM_LIST_LENGTH']}")
 
     for epoch in range(50):
         model.train()

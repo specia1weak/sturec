@@ -2,15 +2,14 @@
 # 2. 调度层 (Manager Layer) - 计算图统筹
 # ==========================================
 import json
-import os
 from pathlib import Path
-from typing import List, Union, Iterable, Literal
+from typing import Union, Literal
 
 import polars as pl
 
-from src.betterbole.data.split import SPLIT_STRATEGIES, SplitContext
-from src.betterbole.emb.schema import IdSeqEmbSetting, SparseEmbSetting, SparseSetEmbSetting, EmbSetting, EmbType
-from src.betterbole.enum_type import FeatureSource
+from betterbole.data.split import SPLIT_STRATEGIES, SplitContext
+from betterbole.emb.schema import IdSeqEmbSetting, SparseEmbSetting, SparseSetEmbSetting, EmbSetting, EmbType
+from betterbole.core.enum_type import FeatureSource
 from typing import Any, List, Iterable
 def ensure_list(value: Any) -> List[Any]:
     if value is None:
@@ -231,7 +230,6 @@ class SchemaManager:
 
         return split_paths
 
-
     def save_schema(self):
         meta_data = [s.to_dict() for s in self.settings]
         with open(self.meta_filepath, 'w') as f:
@@ -267,12 +265,6 @@ class SchemaManager:
                 emb_size += setting.embedding_size
         return emb_size
 
-    def nums(self, field_name):
-        for setting in self.settings:
-            if setting.field_name == field_name:
-                return setting.num_embeddings
-        return None
-
     def get_setting(self, field_name):
         for setting in self.settings:
             if setting.field_name == field_name:
@@ -307,7 +299,7 @@ if __name__ == "__main__":
 
     manager = SchemaManager([user_id_setting, tags])
 
-    from src.convert.kuairand import KuaiRand
+    from betterbole.datasets.kuairand import KuaiRand
     item_lf = pl.scan_csv(KuaiRand.VIDEO_FEATURES)
     inter_lf = pl.scan_csv(KuaiRand.STD_LOG_FORMER_DATA)
     user_lf = pl.scan_csv(KuaiRand.USER_FEATURES)

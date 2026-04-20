@@ -3,8 +3,8 @@ from torch import optim
 
 from torch.utils.data import DataLoader
 
-from src.dataset.amazon import AmazonMTLDataset, load_and_split_data
-from src.model.ple import PLEFramework, evaluate_model, train_one_epoch
+from betterbole.datasets.amazon import AmazonMTLDataset, load_and_split_data
+from betterbole.models.ple import PLEFramework, evaluate_model, train_one_epoch
 
 import torch.optim as optim
 
