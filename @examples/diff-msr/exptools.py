@@ -102,7 +102,27 @@ def print_domain_count_statistics(
 
 
 def lf_to_interaction(frame: pl.DataFrame) -> Interaction:
-    return Interaction(frame.to_dict(as_series=False))
+    unsupported_columns = []
+    converted = frame
+
+    for column_name, dtype in frame.schema.items():
+        dtype_name = str(dtype)
+        if dtype in {pl.Date, pl.Datetime, pl.Time, pl.Duration}:
+            converted = converted.with_columns(pl.col(column_name).cast(pl.Int64))
+            continue
+        if dtype_name in {"String", "Utf8", "Categorical", "Enum", "Binary", "Object"}:
+            unsupported_columns.append(column_name)
+            continue
+        if dtype_name.startswith("List(") and any(
+                token in dtype_name for token in ("String", "Utf8", "Categorical", "Enum", "Binary", "Object")
+        ):
+            unsupported_columns.append(column_name)
+
+    if unsupported_columns:
+        print(f"[lf_to_interaction] drop unsupported columns: {unsupported_columns}")
+        converted = converted.drop(unsupported_columns)
+
+    return Interaction(converted.to_dict(as_series=False))
 
 
 class InteractionMapDataset(Dataset):
