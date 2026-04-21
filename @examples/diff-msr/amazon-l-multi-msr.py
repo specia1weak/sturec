@@ -36,10 +36,16 @@ TIMESTEP = 500
 DIFFUSION_BETA = 0.0002
 DIFFUSION_SCHEDULE = "other"
 DIFFUSION_OBJECTIVE = "pred_v"
-WORK_DIR = "workspace/diffmsr-amazonS-multi-workdir"
-DATASET = DiffExperimentDataset.AMAZON_SMALL
+WORK_DIR = "workspace/diffmsr-amazonL-multi-msr-workdir"
+DATASET = DiffExperimentDataset.AMAZON_LARGE
 
-STAGE1_EPOCHS = 5
+SHARED_BOTTOM_HIDDEN_DIMS = (256, 256)
+DOMAIN_HEAD_HIDDEN_DIMS = (256,)
+HEAD_DROPOUT = 0.0
+STAGE4_FREEZE_EMBEDDINGS = True
+STAGE4_FREEZE_SHARED_BOTTOM = False
+
+STAGE1_EPOCHS = 8
 STAGE2_EPOCHS = 40
 STAGE3_EPOCHS = 15
 STAGE4_EPOCHS = 10
@@ -47,13 +53,16 @@ STAGE4_EPOCHS = 10
 LEARNING_RATE_STAGE1 = 1e-3
 LEARNING_RATE_STAGE2 = 1e-4
 LEARNING_RATE_STAGE3 = 1e-3
-LEARNING_RATE_STAGE4 = 2e-3
+LEARNING_RATE_STAGE4 = 1e-3
 WEIGHT_DECAY = 1e-7
 
 CLASSIFIER_NOISE_MAX_STEP = 70
 AUG_STEP1 = 30
 AUG_STEP2 = 50
 AUG_TARGET_SAMPLE_SIZE = 512
+TRANSFER_CLASSIFIER_THRESHOLD = 0.5
+TRANSFER_DIAGNOSTIC_THRESHOLDS = (0.5, 0.55, 0.6, 0.7)
+TRANSFER_DIAGNOSTIC_TOP_STEPS = 5
 
 
 
@@ -127,14 +136,149 @@ def sample_interaction(interaction: Interaction, sample_size: int, device: torch
     return interaction[indices.tolist()].to(device)
 
 
+def build_mlp(input_dim: int, hidden_dims: Tuple[int, ...], output_dim: Optional[int] = None) -> nn.Module:
+    layers = []
+    last_dim = input_dim
+    for hidden_dim in hidden_dims:
+        layers.extend([
+            nn.Linear(last_dim, hidden_dim),
+            nn.BatchNorm1d(hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(HEAD_DROPOUT),
+        ])
+        last_dim = hidden_dim
+    if output_dim is None:
+        return nn.Identity() if not layers else nn.Sequential(*layers)
+    layers.append(nn.Linear(last_dim, output_dim))
+    return nn.Sequential(*layers)
+
+
+def add_count_fields(metrics: dict, total_count: int, positive_count: float) -> dict:
+    metrics["count"] = int(total_count)
+    metrics["pos"] = float(positive_count)
+    metrics["neg"] = float(total_count - positive_count)
+    return metrics
+
+
+def finite_metric(value: Optional[float]) -> bool:
+    return value is not None and value == value
+
+
+def weighted_average(values, weights) -> float:
+    pairs = [
+        (float(value), float(weight))
+        for value, weight in zip(values, weights)
+        if finite_metric(value) and weight > 0
+    ]
+    if not pairs:
+        return float("nan")
+    total_weight = sum(weight for _, weight in pairs)
+    return sum(value * weight for value, weight in pairs) / total_weight
+
+
+def add_domain_aggregate_metrics(metrics: dict, domain_specs: Tuple[Tuple[int, int], ...]) -> dict:
+    domain_metrics = [metrics[f"domain{raw_domain}"] for raw_domain, _ in domain_specs]
+    auc_values = [domain_metric.get("auc") for domain_metric in domain_metrics]
+    logloss_values = [domain_metric.get("logloss") for domain_metric in domain_metrics]
+    counts = [domain_metric.get("count", 0) for domain_metric in domain_metrics]
+    valid_auc_values = [value for value in auc_values if finite_metric(value)]
+    valid_logloss_values = [value for value in logloss_values if finite_metric(value)]
+    metrics["domain_macro"] = {
+        "auc": sum(valid_auc_values) / len(valid_auc_values) if valid_auc_values else float("nan"),
+        "logloss": sum(valid_logloss_values) / len(valid_logloss_values) if valid_logloss_values else float("nan"),
+        "count": sum(counts),
+    }
+    metrics["domain_weighted"] = {
+        "auc": weighted_average(auc_values, counts),
+        "logloss": weighted_average(logloss_values, counts),
+        "count": sum(counts),
+    }
+    return metrics
+
+
+def format_auc_summary(metrics: dict, domain_specs: Tuple[Tuple[int, int], ...]) -> str:
+    return ", ".join(
+        [f"domain{raw_domain}={metrics[f'domain{raw_domain}'].get('auc', float('nan')):.6f}" for raw_domain, _ in domain_specs]
+        + [
+            f"domain_macro={metrics['domain_macro'].get('auc', float('nan')):.6f}",
+            f"domain_weighted={metrics['domain_weighted'].get('auc', float('nan')):.6f}",
+            f"overall_global={metrics['overall'].get('auc', float('nan')):.6f}",
+        ]
+    )
+
+
+def empty_transfer_diagnostic() -> dict:
+    return {
+        "candidates": 0,
+        "selected": 0,
+        "scan_count": 0,
+        "pred_sum": 0.0,
+        "pred_min": float("inf"),
+        "pred_max": -float("inf"),
+        "below_threshold_counts": {str(threshold): 0 for threshold in TRANSFER_DIAGNOSTIC_THRESHOLDS},
+        "selected_step_counts": {},
+    }
+
+
+def merge_transfer_diagnostic(target: dict, source: dict) -> None:
+    target["candidates"] += source.get("candidates", 0)
+    target["selected"] += source.get("selected", 0)
+    target["scan_count"] += source.get("scan_count", 0)
+    target["pred_sum"] += source.get("pred_sum", 0.0)
+    if source.get("scan_count", 0) > 0:
+        target["pred_min"] = min(target["pred_min"], source.get("pred_min", float("inf")))
+        target["pred_max"] = max(target["pred_max"], source.get("pred_max", -float("inf")))
+    for threshold_key, count in source.get("below_threshold_counts", {}).items():
+        target["below_threshold_counts"][threshold_key] = (
+            target["below_threshold_counts"].get(threshold_key, 0) + count
+        )
+    for step, count in source.get("selected_step_counts", {}).items():
+        target["selected_step_counts"][step] = target["selected_step_counts"].get(step, 0) + count
+
+
+def format_transfer_diagnostic(diag: dict) -> str:
+    scan_count = diag.get("scan_count", 0)
+    candidates = diag.get("candidates", 0)
+    selected = diag.get("selected", 0)
+    pred_mean = diag["pred_sum"] / scan_count if scan_count else float("nan")
+    pred_min = diag["pred_min"] if scan_count else float("nan")
+    pred_max = diag["pred_max"] if scan_count else float("nan")
+    below_parts = []
+    for threshold in TRANSFER_DIAGNOSTIC_THRESHOLDS:
+        key = str(threshold)
+        below_rate = diag["below_threshold_counts"].get(key, 0) / scan_count if scan_count else 0.0
+        below_parts.append(f"below{threshold:g}={below_rate:.2%}")
+    top_steps = sorted(
+        diag["selected_step_counts"].items(),
+        key=lambda item: item[1],
+        reverse=True,
+    )[:TRANSFER_DIAGNOSTIC_TOP_STEPS]
+    top_step_text = "none" if not top_steps else ",".join(f"{step}:{count}" for step, count in top_steps)
+    selected_rate = selected / candidates if candidates else 0.0
+    return (
+        f"cand={candidates}, selected={selected} ({selected_rate:.2%}), "
+        f"scan_pred_mean={pred_mean:.4f}, scan_pred_range=[{pred_min:.4f},{pred_max:.4f}], "
+        f"{' '.join(below_parts)}, top_steps={top_step_text}"
+    )
+
+
 class DiffMSRIdModel(nn.Module):
-    def __init__(self, schema_manager: SchemaManager, embedding_size: int = EMB_DIM):
+    def __init__(
+            self,
+            schema_manager: SchemaManager,
+            domain_head_ids: Tuple[int, ...],
+            embedding_size: int = EMB_DIM,
+    ):
         super().__init__()
         self.manager = schema_manager
         self.USER = schema_manager.uid_field
         self.ITEM = schema_manager.iid_field
         self.DOMAIN = schema_manager.domain_field
         self.LABEL = schema_manager.label_field
+        self.domain_head_ids = tuple(int(domain_id) for domain_id in domain_head_ids)
+        self.domain_to_head_idx = {
+            domain_id: head_idx for head_idx, domain_id in enumerate(self.domain_head_ids)
+        }
 
         self.user_side_emb = UserSideEmb(schema_manager.settings)
         self.item_side_emb = ItemSideEmb(schema_manager.settings)
@@ -145,21 +289,12 @@ class DiffMSRIdModel(nn.Module):
         self.domain_emb = self.inter_side_emb.embedding.emb_modules[self.DOMAIN]
 
         input_dim = embedding_size * 3
-        self.head = nn.Sequential(
-            nn.Linear(input_dim, 256),
-            nn.BatchNorm1d(256),
-            nn.ReLU(),
-            nn.Dropout(0.0),
-            nn.Linear(256, 256),
-            nn.BatchNorm1d(256),
-            nn.ReLU(),
-            nn.Dropout(0.0),
-            nn.Linear(256, 256),
-            nn.BatchNorm1d(256),
-            nn.ReLU(),
-            nn.Dropout(0.0),
-            nn.Linear(256, 1),
-        )
+        self.shared_bottom = build_mlp(input_dim, SHARED_BOTTOM_HIDDEN_DIMS)
+        shared_output_dim = SHARED_BOTTOM_HIDDEN_DIMS[-1] if SHARED_BOTTOM_HIDDEN_DIMS else input_dim
+        self.domain_heads = nn.ModuleList([
+            build_mlp(shared_output_dim, DOMAIN_HEAD_HIDDEN_DIMS, output_dim=1)
+            for _ in self.domain_head_ids
+        ])
 
     def embed_user_item_pair(self, interaction: Interaction) -> torch.Tensor:
         user_e = self.user_emb(interaction[self.USER].long())
@@ -182,16 +317,48 @@ class DiffMSRIdModel(nn.Module):
         item_e = self.item_emb(interaction[self.ITEM].long())
         return domain_e, user_e, item_e
 
-    def logits_from_embeddings(
+    def map_domain_ids_to_head_indices(self, domain_ids: torch.Tensor) -> torch.Tensor:
+        head_indices = torch.full_like(domain_ids, -1)
+        for domain_id, head_idx in self.domain_to_head_idx.items():
+            head_indices = torch.where(
+                domain_ids == domain_id,
+                torch.full_like(head_indices, head_idx),
+                head_indices,
+            )
+        if (head_indices < 0).any().item():
+            unknown = torch.unique(domain_ids[head_indices < 0]).tolist()
+            raise ValueError(f"存在未配置 head 的 domain ids: {unknown}, configured={self.domain_head_ids}")
+        return head_indices
+
+    def shared_representation_from_embeddings(
             self,
             domain_e: torch.Tensor,
             user_e: torch.Tensor,
             item_e: torch.Tensor,
     ) -> torch.Tensor:
-        return self.head(torch.cat([domain_e, user_e, item_e], dim=-1)).squeeze(-1)
+        features = torch.cat([domain_e, user_e, item_e], dim=-1)
+        return self.shared_bottom(features)
+
+    def logits_from_embeddings(
+            self,
+            domain_e: torch.Tensor,
+            user_e: torch.Tensor,
+            item_e: torch.Tensor,
+            domain_ids: torch.Tensor,
+    ) -> torch.Tensor:
+        shared_rep = self.shared_representation_from_embeddings(domain_e, user_e, item_e)
+        all_logits = torch.cat([head(shared_rep) for head in self.domain_heads], dim=1)
+        head_indices = self.map_domain_ids_to_head_indices(domain_ids.long())
+        return all_logits.gather(1, head_indices.unsqueeze(-1)).squeeze(-1)
 
     def logits(self, interaction: Interaction, domain_override: Optional[int] = None) -> torch.Tensor:
-        return self.logits_from_embeddings(*self.embed_triplet(interaction, domain_override=domain_override))
+        domain_ids = interaction[self.DOMAIN].long()
+        if domain_override is not None:
+            domain_ids = torch.full_like(domain_ids, domain_override)
+        return self.logits_from_embeddings(
+            *self.embed_triplet(interaction, domain_override=domain_override),
+            domain_ids=domain_ids,
+        )
 
     def calculate_loss(self, interaction: Interaction, domain_override: Optional[int] = None) -> torch.Tensor:
         logits = self.logits(interaction, domain_override=domain_override)
@@ -201,11 +368,23 @@ class DiffMSRIdModel(nn.Module):
     def predict(self, interaction: Interaction, domain_override: Optional[int] = None) -> torch.Tensor:
         return torch.sigmoid(self.logits(interaction, domain_override=domain_override))
 
-    def freeze_embeddings_train_head(self) -> None:
+    def configure_stage4_trainability(
+            self,
+            freeze_embeddings: bool = STAGE4_FREEZE_EMBEDDINGS,
+            freeze_shared_bottom: bool = STAGE4_FREEZE_SHARED_BOTTOM,
+    ) -> None:
         for param in self.parameters():
-            param.requires_grad = False
-        for param in self.head.parameters():
             param.requires_grad = True
+        if freeze_embeddings:
+            for module in (self.user_side_emb, self.item_side_emb, self.inter_side_emb):
+                for param in module.parameters():
+                    param.requires_grad = False
+        if freeze_shared_bottom:
+            for param in self.shared_bottom.parameters():
+                param.requires_grad = False
+        for head in self.domain_heads:
+            for param in head.parameters():
+                param.requires_grad = True
 
 
 class DomainClassifier(nn.Module):
@@ -233,6 +412,8 @@ def evaluate_auc_logloss(
         name: str,
 ) -> dict:
     evaluator = Evaluator("AUC", "logloss")
+    total_count = 0
+    positive_count = 0.0
     model.eval()
     with torch.no_grad():
         for batch in data_loader:
@@ -246,12 +427,15 @@ def evaluate_auc_logloss(
                     continue
                 subset = batch[mask]
                 scores = model.predict(subset, domain_override=domain_idx)
+            labels = subset[model.LABEL].float()
+            total_count += len(subset)
+            positive_count += labels.sum().item()
             evaluator.collect_pointwise(
                 subset[model.USER].detach().cpu(),
-                subset[model.LABEL].float().detach().cpu(),
+                labels.detach().cpu(),
                 scores.detach().cpu(),
             )
-    metrics = evaluator.summary()
+    metrics = add_count_fields(evaluator.summary(), total_count, positive_count)
     print(f"[Metrics][{name}][Epoch {epoch}] {metrics}")
     return metrics
 
@@ -282,11 +466,10 @@ def evaluate_all_domain_metrics(
         epoch,
         f"{name}-overall",
     )
-    auc_summary = ", ".join(
-        [f"domain{raw_domain}={metrics[f'domain{raw_domain}'].get('auc', float('nan')):.6f}" for raw_domain, _ in domain_specs]
-        + [f"overall={metrics['overall'].get('auc', float('nan')):.6f}"]
-    )
-    print(f"[AUCSummary][{name}][Epoch {epoch}] {auc_summary}")
+    add_domain_aggregate_metrics(metrics, domain_specs)
+    print(f"[Metrics][{name}-domain_macro][Epoch {epoch}] {metrics['domain_macro']}")
+    print(f"[Metrics][{name}-domain_weighted][Epoch {epoch}] {metrics['domain_weighted']}")
+    print(f"[AUCSummary][{name}][Epoch {epoch}] {format_auc_summary(metrics, domain_specs)}")
     return metrics
 
 
@@ -459,11 +642,13 @@ def select_transfer_steps(
         pair_embedding: torch.Tensor,
         classifier: DomainClassifier,
         diffusion: CDCDRMlpDiffusion,
-) -> torch.Tensor:
+) -> Tuple[torch.Tensor, dict]:
     device = pair_embedding.device
     selected_steps = torch.full((pair_embedding.size(0),), -1, dtype=torch.long, device=device)
     pending = torch.ones(pair_embedding.size(0), dtype=torch.bool, device=device)
     noise = torch.randn_like(pair_embedding)
+    diagnostics = empty_transfer_diagnostic()
+    diagnostics["candidates"] = pair_embedding.size(0)
 
     for k in range(AUG_STEP1, AUG_STEP2):
         if not pending.any().item():
@@ -471,13 +656,23 @@ def select_transfer_steps(
         t = torch.full((pending.sum().item(),), k, dtype=torch.long, device=device)
         noisy_pair = diffusion.scheduler.add_noise(pair_embedding[pending], noise[pending], t)
         pred = classifier(noisy_pair)
-        chosen = pred < 0.5
+        pred_detached = pred.detach()
+        pred_count = pred_detached.numel()
+        diagnostics["scan_count"] += pred_count
+        diagnostics["pred_sum"] += pred_detached.sum().item()
+        diagnostics["pred_min"] = min(diagnostics["pred_min"], pred_detached.min().item())
+        diagnostics["pred_max"] = max(diagnostics["pred_max"], pred_detached.max().item())
+        for threshold in TRANSFER_DIAGNOSTIC_THRESHOLDS:
+            diagnostics["below_threshold_counts"][str(threshold)] += int((pred_detached < threshold).sum().item())
+        chosen = pred < TRANSFER_CLASSIFIER_THRESHOLD
         if chosen.any().item():
             original_idx = pending.nonzero(as_tuple=False).squeeze(-1)
             chosen_idx = original_idx[chosen]
             selected_steps[chosen_idx] = k
             pending[chosen_idx] = False
-    return selected_steps
+            diagnostics["selected_step_counts"][int(k)] = int(chosen.sum().item())
+    diagnostics["selected"] = int((selected_steps >= 0).sum().item())
+    return selected_steps, diagnostics
 
 
 def denoise_from_intermediate(
@@ -539,7 +734,7 @@ def build_augmented_batch(
         target_pool: Interaction,
         target_domain_idx: int,
         device: torch.device,
-) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, dict]:
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, dict]:
     source_as_target = interaction_with_domain(source_batch, target_domain_idx, frozen_backbone.DOMAIN).to(device)
     with torch.no_grad():
         target_domain_e = frozen_backbone.domain_emb(
@@ -552,6 +747,7 @@ def build_augmented_batch(
         )
 
     domain_parts = []
+    head_domain_id_parts = []
     user_parts = []
     item_parts = []
     label_parts = []
@@ -566,6 +762,10 @@ def build_augmented_batch(
         "target_true_total": 0,
         "target_fake_total": 0,
         "augment_total": 0,
+        "transfer_diag_by_label": {
+            0: empty_transfer_diagnostic(),
+            1: empty_transfer_diagnostic(),
+        },
     }
 
     for label_value, diffusion in ((0, diffusion0), (1, diffusion1)):
@@ -578,7 +778,8 @@ def build_augmented_batch(
         stats[f"source_candidate_label{label_value}"] += candidate_count
         with torch.no_grad():
             pair_embedding = frozen_backbone.embed_user_item_pair(subset)
-            selected_steps = select_transfer_steps(pair_embedding, classifier, diffusion)
+            selected_steps, transfer_diag = select_transfer_steps(pair_embedding, classifier, diffusion)
+            merge_transfer_diagnostic(stats["transfer_diag_by_label"][label_value], transfer_diag)
             valid_mask = selected_steps >= 0
             if not valid_mask.any().item():
                 continue
@@ -592,6 +793,9 @@ def build_augmented_batch(
             )
             transferred_user_e, transferred_item_e = frozen_backbone.split_pair_embedding(transferred_pair)
             domain_parts.append(target_domain_e[label_mask][valid_mask])
+            head_domain_id_parts.append(
+                torch.full((transferred_count,), target_domain_idx, dtype=torch.long, device=device)
+            )
             user_parts.append(transferred_user_e)
             item_parts.append(transferred_item_e)
             label_parts.append(subset[frozen_backbone.LABEL][valid_mask].float())
@@ -604,6 +808,9 @@ def build_augmented_batch(
         )
     stats["target_true_total"] = len(target_true)
     domain_parts.append(true_domain_e)
+    head_domain_id_parts.append(
+        torch.full((len(target_true),), target_domain_idx, dtype=torch.long, device=device)
+    )
     user_parts.append(true_user_e)
     item_parts.append(true_item_e)
     label_parts.append(target_true[frozen_backbone.LABEL].float())
@@ -618,6 +825,9 @@ def build_augmented_batch(
         fake_user_e, fake_item_e = frozen_backbone.split_pair_embedding(fake_pairs)
     stats["target_fake_total"] = len(target_fake_anchor)
     domain_parts.append(fake_domain_e)
+    head_domain_id_parts.append(
+        torch.full((len(target_fake_anchor),), target_domain_idx, dtype=torch.long, device=device)
+    )
     user_parts.append(fake_user_e)
     item_parts.append(fake_item_e)
     label_parts.append(fake_labels)
@@ -625,6 +835,7 @@ def build_augmented_batch(
 
     return (
         torch.cat(domain_parts, dim=0),
+        torch.cat(head_domain_id_parts, dim=0),
         torch.cat(user_parts, dim=0),
         torch.cat(item_parts, dim=0),
         torch.cat(label_parts, dim=0),
@@ -691,11 +902,15 @@ def train_augmented_epoch(
             "target_fake_total": 0,
             "augment_total": 0,
             "num_batches": 0,
+            "transfer_diag_by_label": {
+                0: empty_transfer_diagnostic(),
+                1: empty_transfer_diagnostic(),
+            },
         }
 
         for source_batch in source_loader:
             source_batch = source_batch.to(device)
-            domain_e, user_e, item_e, labels, batch_stats = build_augmented_batch(
+            domain_e, head_domain_ids, user_e, item_e, labels, batch_stats = build_augmented_batch(
                 frozen_backbone,
                 diffusion0,
                 diffusion1,
@@ -706,10 +921,16 @@ def train_augmented_epoch(
                 device,
             )
             for key, value in batch_stats.items():
-                if key in domain_stats:
+                if key == "transfer_diag_by_label":
+                    for label_value, label_diag in value.items():
+                        merge_transfer_diagnostic(
+                            domain_stats["transfer_diag_by_label"][label_value],
+                            label_diag,
+                        )
+                elif key in domain_stats:
                     domain_stats[key] += value
             optimizer.zero_grad()
-            logits = augment_model.logits_from_embeddings(domain_e, user_e, item_e)
+            logits = augment_model.logits_from_embeddings(domain_e, user_e, item_e, head_domain_ids)
             loss = F.binary_cross_entropy_with_logits(logits, labels)
             loss.backward()
             optimizer.step()
@@ -742,7 +963,9 @@ def format_multi_domain_aug_stats(epoch_stats: dict) -> str:
             f"target_fake={stats['target_fake_total']}, "
             f"augment_total={stats['augment_total']}, "
             f"transferred_share_in_aug={safe_ratio(stats['transferred_total'], stats['augment_total']):.4%}, "
-            f"num_batches={stats['num_batches']}"
+            f"num_batches={stats['num_batches']}, "
+            f"diag_label0=({format_transfer_diagnostic(stats['transfer_diag_by_label'][0])}), "
+            f"diag_label1=({format_transfer_diagnostic(stats['transfer_diag_by_label'][1])})"
         )
     return " | ".join(parts)
 
@@ -757,6 +980,8 @@ def evaluate_with_domain_best_states(
         name: str,
 ) -> dict:
     overall_evaluator = Evaluator("AUC", "logloss")
+    overall_count = 0
+    overall_positive_count = 0.0
     metrics = {}
 
     for raw_domain, mapped_domain in domain_specs:
@@ -765,6 +990,8 @@ def evaluate_with_domain_best_states(
             raise ValueError(f"domain{raw_domain} 缺少 best checkpoint，无法恢复评估。")
         model.load_state_dict(best_info["state"])
         domain_evaluator = Evaluator("AUC", "logloss")
+        domain_count = 0
+        domain_positive_count = 0.0
         model.eval()
         with torch.no_grad():
             for batch in data_loader:
@@ -774,26 +1001,34 @@ def evaluate_with_domain_best_states(
                     continue
                 subset = batch[mask]
                 scores = model.predict(subset, domain_override=mapped_domain)
+                labels = subset[model.LABEL].float()
+                domain_count += len(subset)
+                domain_positive_count += labels.sum().item()
+                overall_count += len(subset)
+                overall_positive_count += labels.sum().item()
                 domain_evaluator.collect_pointwise(
                     subset[model.USER].detach().cpu(),
-                    subset[model.LABEL].float().detach().cpu(),
+                    labels.detach().cpu(),
                     scores.detach().cpu(),
                 )
                 overall_evaluator.collect_pointwise(
                     subset[model.USER].detach().cpu(),
-                    subset[model.LABEL].float().detach().cpu(),
+                    labels.detach().cpu(),
                     scores.detach().cpu(),
                 )
-        metrics[f"domain{raw_domain}"] = domain_evaluator.summary()
+        metrics[f"domain{raw_domain}"] = add_count_fields(
+            domain_evaluator.summary(),
+            domain_count,
+            domain_positive_count,
+        )
         print(f"[Metrics][{name}-domain{raw_domain}][Epoch {epoch}] {metrics[f'domain{raw_domain}']}")
 
-    metrics["overall"] = overall_evaluator.summary()
+    metrics["overall"] = add_count_fields(overall_evaluator.summary(), overall_count, overall_positive_count)
+    add_domain_aggregate_metrics(metrics, domain_specs)
     print(f"[Metrics][{name}-overall][Epoch {epoch}] {metrics['overall']}")
-    auc_summary = ", ".join(
-        [f"domain{raw_domain}={metrics[f'domain{raw_domain}'].get('auc', float('nan')):.6f}" for raw_domain, _ in domain_specs]
-        + [f"overall={metrics['overall'].get('auc', float('nan')):.6f}"]
-    )
-    print(f"[AUCSummary][{name}][Epoch {epoch}] {auc_summary}")
+    print(f"[Metrics][{name}-domain_macro][Epoch {epoch}] {metrics['domain_macro']}")
+    print(f"[Metrics][{name}-domain_weighted][Epoch {epoch}] {metrics['domain_weighted']}")
+    print(f"[AUCSummary][{name}][Epoch {epoch}] {format_auc_summary(metrics, domain_specs)}")
     return metrics
 
 
@@ -811,8 +1046,8 @@ def train_stage4_branches(
 ) -> Tuple[DiffMSRIdModel, DiffMSRIdModel, dict, dict]:
     baseline_model = deepcopy(backbone).to(device)
     augment_model = deepcopy(backbone).to(device)
-    baseline_model.freeze_embeddings_train_head()
-    augment_model.freeze_embeddings_train_head()
+    baseline_model.configure_stage4_trainability()
+    augment_model.configure_stage4_trainability()
 
     baseline_optimizer = torch.optim.Adam(
         filter(lambda p: p.requires_grad, baseline_model.parameters()),
@@ -957,7 +1192,11 @@ if __name__ == "__main__":
     valid_loader = make_loader(valid_interaction, EVAL_BATCH_SIZE, shuffle=False)
     test_loader = make_loader(test_interaction, EVAL_BATCH_SIZE, shuffle=False)
 
-    backbone = DiffMSRIdModel(manager, embedding_size=EMB_DIM).to(device)
+    backbone = DiffMSRIdModel(
+        manager,
+        domain_head_ids=tuple(mapped_domain for _, mapped_domain in domain_specs),
+        embedding_size=EMB_DIM,
+    ).to(device)
 
     checkpoint_dir = manager.work_dir / "diffmsr_id_stage_ckpt"
     checkpoint_dir.mkdir(parents=True, exist_ok=True)

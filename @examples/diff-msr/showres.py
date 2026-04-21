@@ -1,0 +1,4 @@
+from exptools import parse_and_format_experiment_results
+from betterbole.utils import change_root_workdir
+change_root_workdir()
+parse_and_format_experiment_results("workspace/diffmsr-amazonS-multi-msr-workdir/diffmsr_amazonS_multi_msr_experiment_record.json")

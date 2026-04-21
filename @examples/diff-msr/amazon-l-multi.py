@@ -36,8 +36,8 @@ TIMESTEP = 500
 DIFFUSION_BETA = 0.0002
 DIFFUSION_SCHEDULE = "other"
 DIFFUSION_OBJECTIVE = "pred_v"
-WORK_DIR = "workspace/diffmsr-amazonS-multi-workdir"
-DATASET = DiffExperimentDataset.AMAZON_SMALL
+WORK_DIR = "workspace/diffmsr-amazonL-multi-workdir"
+DATASET = DiffExperimentDataset.AMAZON_LARGE
 
 STAGE1_EPOCHS = 5
 STAGE2_EPOCHS = 40

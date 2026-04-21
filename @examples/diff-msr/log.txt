@@ -1,0 +1,762 @@
+D:\pyprojects\recommend-study\studybole\.venv\Scripts\python.exe D:\pyprojects\recommend-study\studybole\@examples\diff-msr\amazon-s-multi-msr.py
+切换到:  D:\pyprojects\recommend-study\studybole
+
+[排队系统] 前置任务已清空，当前任务 (PID: 18592) 开始执行！
+==================================================
+DATASET SPLIT STATISTICS (Row Counts)
+==================================================
+train_samples (Pos only, Seq, unused): 35475
+train_ple     (Pos + Neg):           85536
+val_ple       (Pos + Neg):           10448
+test_ple      (Pos + Neg):           16109
+==================================================
+[-] 成功恢复特征状态: user
+[-] 成功恢复特征状态: item
+[-] 成功恢复特征状态: domain_indicator
+Mapped domains: ((0, 1), (1, 2), (2, 3))
+
+===== Stage 1: Backbone pretrain =====
+[Metrics][stage1-valid-domain0][Epoch 0] {'auc': 0.7285048101020546, 'logloss': 0.6602880149003657, 'count': 3369, 'pos': 2587.0, 'neg': 782.0}
+[Metrics][stage1-valid-domain1][Epoch 0] {'auc': 0.7713385735487639, 'logloss': 0.5198613023570784, 'count': 6138, 'pos': 4831.0, 'neg': 1307.0}
+[Metrics][stage1-valid-domain2][Epoch 0] {'auc': 0.6140740313653137, 'logloss': 0.6822939575819209, 'count': 941, 'pos': 813.0, 'neg': 128.0}
+[Metrics][stage1-valid-overall][Epoch 0] {'auc': 0.6132642544629374, 'logloss': 0.5797719763966404, 'count': 10448, 'pos': 8231.0, 'neg': 2217.0}
+[Metrics][stage1-valid-domain_macro][Epoch 0] {'auc': 0.7046391383387108, 'logloss': 0.620814424946455, 'count': 10448}
+[Metrics][stage1-valid-domain_weighted][Epoch 0] {'auc': 0.743362608460078, 'logloss': 0.5797719764693402, 'count': 10448}
+[AUCSummary][stage1-valid][Epoch 0] domain0=0.728505, domain1=0.771339, domain2=0.614074, domain_macro=0.704639, domain_weighted=0.743363, overall_global=0.613264
+[Metrics][stage1-best-test-domain0][Epoch 0] {'auc': 0.7159729581686123, 'logloss': 0.6587146309209587, 'count': 5911, 'pos': 4614.0, 'neg': 1297.0}
+[Metrics][stage1-best-test-domain1][Epoch 0] {'auc': 0.7468245673502438, 'logloss': 0.5106245562926929, 'count': 8588, 'pos': 6852.0, 'neg': 1736.0}
+[Metrics][stage1-best-test-domain2][Epoch 0] {'auc': 0.6158331881875215, 'logloss': 0.682735181219385, 'count': 1610, 'pos': 1401.0, 'neg': 209.0}
+[Metrics][stage1-best-test-overall][Epoch 0] {'auc': 0.5935833850295964, 'logloss': 0.5821658393255499, 'count': 16109, 'pos': 12867.0, 'neg': 3242.0}
+[Metrics][stage1-best-test-domain_macro][Epoch 0] {'auc': 0.6928769045687925, 'logloss': 0.6173581228110122, 'count': 16109}
+[Metrics][stage1-best-test-domain_weighted][Epoch 0] {'auc': 0.7224121281966895, 'logloss': 0.5821658398770032, 'count': 16109}
+[AUCSummary][stage1-best-test][Epoch 0] domain0=0.715973, domain1=0.746825, domain2=0.615833, domain_macro=0.692877, domain_weighted=0.722412, overall_global=0.593583
+[Stage1][Epoch 0] new best overall valid auc=0.613264, best_test={'domain0': {'auc': 0.7159729581686123, 'logloss': 0.6587146309209587, 'count': 5911, 'pos': 4614.0, 'neg': 1297.0}, 'domain1': {'auc': 0.7468245673502438, 'logloss': 0.5106245562926929, 'count': 8588, 'pos': 6852.0, 'neg': 1736.0}, 'domain2': {'auc': 0.6158331881875215, 'logloss': 0.682735181219385, 'count': 1610, 'pos': 1401.0, 'neg': 209.0}, 'overall': {'auc': 0.5935833850295964, 'logloss': 0.5821658393255499, 'count': 16109, 'pos': 12867.0, 'neg': 3242.0}, 'domain_macro': {'auc': 0.6928769045687925, 'logloss': 0.6173581228110122, 'count': 16109}, 'domain_weighted': {'auc': 0.7224121281966895, 'logloss': 0.5821658398770032, 'count': 16109}}
+[Stage1][Epoch 0] backbone loss=0.451074, best_overall_auc=0.613264
+[Metrics][stage1-valid-domain0][Epoch 1] {'auc': 0.7337197496433575, 'logloss': 0.5587850129046755, 'count': 3369, 'pos': 2587.0, 'neg': 782.0}
+[Metrics][stage1-valid-domain1][Epoch 1] {'auc': 0.7644772024338479, 'logloss': 0.4607110541896665, 'count': 6138, 'pos': 4831.0, 'neg': 1307.0}
+[Metrics][stage1-valid-domain2][Epoch 1] {'auc': 0.6282960485854858, 'logloss': 0.4572994941301655, 'count': 941, 'pos': 813.0, 'neg': 128.0}
+[Metrics][stage1-valid-overall][Epoch 1] {'auc': 0.7313054375388772, 'logloss': 0.4920281378572543, 'count': 10448, 'pos': 8231.0, 'neg': 2217.0}
+[Metrics][stage1-valid-domain_macro][Epoch 1] {'auc': 0.7088310002208971, 'logloss': 0.49226518707483585, 'count': 10448}
+[Metrics][stage1-valid-domain_weighted][Epoch 1] {'auc': 0.7422941698704414, 'logloss': 0.49202813773626636, 'count': 10448}
+[AUCSummary][stage1-valid][Epoch 1] domain0=0.733720, domain1=0.764477, domain2=0.628296, domain_macro=0.708831, domain_weighted=0.742294, overall_global=0.731305
+[Metrics][stage1-best-test-domain0][Epoch 1] {'auc': 0.7263016350291878, 'logloss': 0.5546391416753871, 'count': 5911, 'pos': 4614.0, 'neg': 1297.0}
+[Metrics][stage1-best-test-domain1][Epoch 1] {'auc': 0.73415827159348, 'logloss': 0.46255384758099233, 'count': 8588, 'pos': 6852.0, 'neg': 1736.0}
+[Metrics][stage1-best-test-domain2][Epoch 1] {'auc': 0.6295878883504263, 'logloss': 0.4532788017092842, 'count': 1610, 'pos': 1401.0, 'neg': 209.0}
+[Metrics][stage1-best-test-overall][Epoch 1] {'auc': 0.711471157464588, 'logloss': 0.4954164307122577, 'count': 16109, 'pos': 12867.0, 'neg': 3242.0}
+[Metrics][stage1-best-test-domain_macro][Epoch 1] {'auc': 0.6966825983243647, 'logloss': 0.49015726365522116, 'count': 16109}
+[Metrics][stage1-best-test-domain_weighted][Epoch 1] {'auc': 0.7208241791139438, 'logloss': 0.49541643058046575, 'count': 16109}
+[AUCSummary][stage1-best-test][Epoch 1] domain0=0.726302, domain1=0.734158, domain2=0.629588, domain_macro=0.696683, domain_weighted=0.720824, overall_global=0.711471
+[Stage1][Epoch 1] new best overall valid auc=0.731305, best_test={'domain0': {'auc': 0.7263016350291878, 'logloss': 0.5546391416753871, 'count': 5911, 'pos': 4614.0, 'neg': 1297.0}, 'domain1': {'auc': 0.73415827159348, 'logloss': 0.46255384758099233, 'count': 8588, 'pos': 6852.0, 'neg': 1736.0}, 'domain2': {'auc': 0.6295878883504263, 'logloss': 0.4532788017092842, 'count': 1610, 'pos': 1401.0, 'neg': 209.0}, 'overall': {'auc': 0.711471157464588, 'logloss': 0.4954164307122577, 'count': 16109, 'pos': 12867.0, 'neg': 3242.0}, 'domain_macro': {'auc': 0.6966825983243647, 'logloss': 0.49015726365522116, 'count': 16109}, 'domain_weighted': {'auc': 0.7208241791139438, 'logloss': 0.49541643058046575, 'count': 16109}}
+[Stage1][Epoch 1] backbone loss=0.310950, best_overall_auc=0.731305
+[Metrics][stage1-valid-domain0][Epoch 2] {'auc': 0.7329130405124185, 'logloss': 0.6971708478633196, 'count': 3369, 'pos': 2587.0, 'neg': 782.0}
+[Metrics][stage1-valid-domain1][Epoch 2] {'auc': 0.758124215943417, 'logloss': 0.5410146296836231, 'count': 6138, 'pos': 4831.0, 'neg': 1307.0}
+[Metrics][stage1-valid-domain2][Epoch 2] {'auc': 0.6316978013530136, 'logloss': 0.5537371206279652, 'count': 941, 'pos': 813.0, 'neg': 128.0}
+[Metrics][stage1-valid-overall][Epoch 2] {'auc': 0.7391321312044793, 'logloss': 0.5925136910592074, 'count': 10448, 'pos': 8231.0, 'neg': 2217.0}
+[Metrics][stage1-valid-domain_macro][Epoch 2] {'auc': 0.7075783526029497, 'logloss': 0.5973075327249693, 'count': 10448}
+[Metrics][stage1-valid-domain_weighted][Epoch 2] {'auc': 0.7386081644353194, 'logloss': 0.5925136881662058, 'count': 10448}
+[AUCSummary][stage1-valid][Epoch 2] domain0=0.732913, domain1=0.758124, domain2=0.631698, domain_macro=0.707578, domain_weighted=0.738608, overall_global=0.739132
+[Metrics][stage1-best-test-domain0][Epoch 2] {'auc': 0.7188464493601485, 'logloss': 0.7063777837049866, 'count': 5911, 'pos': 4614.0, 'neg': 1297.0}
+[Metrics][stage1-best-test-domain1][Epoch 2] {'auc': 0.7305560235364696, 'logloss': 0.5777651679240381, 'count': 8588, 'pos': 6852.0, 'neg': 1736.0}
+[Metrics][stage1-best-test-domain2][Epoch 2] {'auc': 0.6403542923885537, 'logloss': 0.5150728063670169, 'count': 1610, 'pos': 1401.0, 'neg': 209.0}
+[Metrics][stage1-best-test-overall][Epoch 2] {'auc': 0.7174906976691782, 'logloss': 0.618692254214475, 'count': 16109, 'pos': 12867.0, 'neg': 3242.0}
+[Metrics][stage1-best-test-domain_macro][Epoch 2] {'auc': 0.6965855884283906, 'logloss': 0.5997385859986805, 'count': 16109}
+[Metrics][stage1-best-test-domain_weighted][Epoch 2] {'auc': 0.7172442052917382, 'logloss': 0.6186922564940538, 'count': 16109}
+[AUCSummary][stage1-best-test][Epoch 2] domain0=0.718846, domain1=0.730556, domain2=0.640354, domain_macro=0.696586, domain_weighted=0.717244, overall_global=0.717491
+[Stage1][Epoch 2] new best overall valid auc=0.739132, best_test={'domain0': {'auc': 0.7188464493601485, 'logloss': 0.7063777837049866, 'count': 5911, 'pos': 4614.0, 'neg': 1297.0}, 'domain1': {'auc': 0.7305560235364696, 'logloss': 0.5777651679240381, 'count': 8588, 'pos': 6852.0, 'neg': 1736.0}, 'domain2': {'auc': 0.6403542923885537, 'logloss': 0.5150728063670169, 'count': 1610, 'pos': 1401.0, 'neg': 209.0}, 'overall': {'auc': 0.7174906976691782, 'logloss': 0.618692254214475, 'count': 16109, 'pos': 12867.0, 'neg': 3242.0}, 'domain_macro': {'auc': 0.6965855884283906, 'logloss': 0.5997385859986805, 'count': 16109}, 'domain_weighted': {'auc': 0.7172442052917382, 'logloss': 0.6186922564940538, 'count': 16109}}
+[Stage1][Epoch 2] backbone loss=0.235037, best_overall_auc=0.739132
+[Metrics][stage1-valid-domain0][Epoch 3] {'auc': 0.7109944766128498, 'logloss': 0.8695022474669266, 'count': 3369, 'pos': 2587.0, 'neg': 782.0}
+[Metrics][stage1-valid-domain1][Epoch 3] {'auc': 0.7546431274555097, 'logloss': 0.6748995082358409, 'count': 6138, 'pos': 4831.0, 'neg': 1307.0}
+[Metrics][stage1-valid-domain2][Epoch 3] {'auc': 0.6251008994464945, 'logloss': 0.6969035905159787, 'count': 941, 'pos': 813.0, 'neg': 128.0}
+[Metrics][stage1-valid-overall][Epoch 3] {'auc': 0.7306932925225695, 'logloss': 0.7396317505873737, 'count': 10448, 'pos': 8231.0, 'neg': 2217.0}
+[Metrics][stage1-valid-domain_macro][Epoch 3] {'auc': 0.6969128345049512, 'logloss': 0.7471017820729154, 'count': 10448}
+[Metrics][stage1-valid-domain_weighted][Epoch 3] {'auc': 0.7289012111801072, 'logloss': 0.7396317507602606, 'count': 10448}
+[AUCSummary][stage1-valid][Epoch 3] domain0=0.710994, domain1=0.754643, domain2=0.625101, domain_macro=0.696913, domain_weighted=0.728901, overall_global=0.730693
+[Stage1][Epoch 3] backbone loss=0.152135, best_overall_auc=0.739132
+[Metrics][stage1-valid-domain0][Epoch 4] {'auc': 0.7068052242325141, 'logloss': 1.008660042244467, 'count': 3369, 'pos': 2587.0, 'neg': 782.0}
+[Metrics][stage1-valid-domain1][Epoch 4] {'auc': 0.7380712140747471, 'logloss': 0.80890950435468, 'count': 6138, 'pos': 4831.0, 'neg': 1307.0}
+[Metrics][stage1-valid-domain2][Epoch 4] {'auc': 0.6229099400369004, 'logloss': 0.8914721277826555, 'count': 941, 'pos': 813.0, 'neg': 128.0}
+[Metrics][stage1-valid-overall][Epoch 4] {'auc': 0.7216858475393119, 'logloss': 0.8807558673220038, 'count': 10448, 'pos': 8231.0, 'neg': 2217.0}
+[Metrics][stage1-valid-domain_macro][Epoch 4] {'auc': 0.6892621261147206, 'logloss': 0.9030138914606008, 'count': 10448}
+[Metrics][stage1-valid-domain_weighted][Epoch 4] {'auc': 0.7176173589208327, 'logloss': 0.8807558855564809, 'count': 10448}
+[AUCSummary][stage1-valid][Epoch 4] domain0=0.706805, domain1=0.738071, domain2=0.622910, domain_macro=0.689262, domain_weighted=0.717617, overall_global=0.721686
+[Stage1][Epoch 4] backbone loss=0.093900, best_overall_auc=0.739132
+[Metrics][stage1-valid-domain0][Epoch 5] {'auc': 0.7054397009639977, 'logloss': 1.1623109366198192, 'count': 3369, 'pos': 2587.0, 'neg': 782.0}
+[Metrics][stage1-valid-domain1][Epoch 5] {'auc': 0.7303495484800171, 'logloss': 0.8969749035857745, 'count': 6138, 'pos': 4831.0, 'neg': 1307.0}
+[Metrics][stage1-valid-domain2][Epoch 5] {'auc': 0.6264270064575646, 'logloss': 0.9938899044553754, 'count': 941, 'pos': 813.0, 'neg': 128.0}
+[Metrics][stage1-valid-overall][Epoch 5] {'auc': 0.714872600349614, 'logloss': 0.9912622413459449, 'count': 10448, 'pos': 8231.0, 'neg': 2217.0}
+[Metrics][stage1-valid-domain_macro][Epoch 5] {'auc': 0.6874054186338597, 'logloss': 1.017725248220323, 'count': 10448}
+[Metrics][stage1-valid-domain_weighted][Epoch 5] {'auc': 0.7129574745592094, 'logloss': 0.9912622419385685, 'count': 10448}
+[AUCSummary][stage1-valid][Epoch 5] domain0=0.705440, domain1=0.730350, domain2=0.626427, domain_macro=0.687405, domain_weighted=0.712957, overall_global=0.714873
+[Stage1][Epoch 5] backbone loss=0.056453, best_overall_auc=0.739132
+[Metrics][stage1-valid-domain0][Epoch 6] {'auc': 0.7015116898677927, 'logloss': 1.2715949673953562, 'count': 3369, 'pos': 2587.0, 'neg': 782.0}
+[Metrics][stage1-valid-domain1][Epoch 6] {'auc': 0.7301181622070038, 'logloss': 1.0166835150439035, 'count': 6138, 'pos': 4831.0, 'neg': 1307.0}
+[Metrics][stage1-valid-domain2][Epoch 6] {'auc': 0.6127142912054121, 'logloss': 1.0298220950633006, 'count': 941, 'pos': 813.0, 'neg': 128.0}
+[Metrics][stage1-valid-overall][Epoch 6] {'auc': 0.713312029229082, 'logloss': 1.1000640828714026, 'count': 10448, 'pos': 8231.0, 'neg': 2217.0}
+[Metrics][stage1-valid-domain_macro][Epoch 6] {'auc': 0.6814480477600696, 'logloss': 1.1060335258341867, 'count': 10448}
+[Metrics][stage1-valid-domain_weighted][Epoch 6] {'auc': 0.710319899580348, 'logloss': 1.100064074650555, 'count': 10448}
+[AUCSummary][stage1-valid][Epoch 6] domain0=0.701512, domain1=0.730118, domain2=0.612714, domain_macro=0.681448, domain_weighted=0.710320, overall_global=0.713312
+[Stage1][Epoch 6] backbone loss=0.032333, best_overall_auc=0.739132
+[Metrics][stage1-valid-domain0][Epoch 7] {'auc': 0.6913413219945883, 'logloss': 1.522511786105602, 'count': 3369, 'pos': 2587.0, 'neg': 782.0}
+[Metrics][stage1-valid-domain1][Epoch 7] {'auc': 0.7358223643939446, 'logloss': 1.1279735908099446, 'count': 6138, 'pos': 4831.0, 'neg': 1307.0}
+[Metrics][stage1-valid-domain2][Epoch 7] {'auc': 0.6135839483394835, 'logloss': 1.168607962151407, 'count': 941, 'pos': 813.0, 'neg': 128.0}
+[Metrics][stage1-valid-overall][Epoch 7] {'auc': 0.7078570036256324, 'logloss': 1.2588537724166389, 'count': 10448, 'pos': 8231.0, 'neg': 2217.0}
+[Metrics][stage1-valid-domain_macro][Epoch 7] {'auc': 0.6802492115760055, 'logloss': 1.273031113022318, 'count': 10448}
+[Metrics][stage1-valid-domain_weighted][Epoch 7] {'auc': 0.7104698585219423, 'logloss': 1.2588537710725198, 'count': 10448}
+[AUCSummary][stage1-valid][Epoch 7] domain0=0.691341, domain1=0.735822, domain2=0.613584, domain_macro=0.680249, domain_weighted=0.710470, overall_global=0.707857
+[Stage1][Epoch 7] backbone loss=0.022420, best_overall_auc=0.739132
+[Stage1] best-epoch synced test metrics: {'domain0': {'auc': 0.7188464493601485, 'logloss': 0.7063777837049866, 'count': 5911, 'pos': 4614.0, 'neg': 1297.0}, 'domain1': {'auc': 0.7305560235364696, 'logloss': 0.5777651679240381, 'count': 8588, 'pos': 6852.0, 'neg': 1736.0}, 'domain2': {'auc': 0.6403542923885537, 'logloss': 0.5150728063670169, 'count': 1610, 'pos': 1401.0, 'neg': 209.0}, 'overall': {'auc': 0.7174906976691782, 'logloss': 0.618692254214475, 'count': 16109, 'pos': 12867.0, 'neg': 3242.0}, 'domain_macro': {'auc': 0.6965855884283906, 'logloss': 0.5997385859986805, 'count': 16109}, 'domain_weighted': {'auc': 0.7172442052917382, 'logloss': 0.6186922564940538, 'count': 16109}}
+
+===== Stage 2: Per-domain diffusion label=0/1 =====
+[Stage2][domain0-label0][Epoch 0] diffusion loss=0.470129, best=0.470129
+[Stage2][domain0-label0][Epoch 1] diffusion loss=0.472804, best=0.470129
+[Stage2][domain0-label0][Epoch 2] diffusion loss=0.452823, best=0.452823
+[Stage2][domain0-label0][Epoch 3] diffusion loss=0.448281, best=0.448281
+[Stage2][domain0-label0][Epoch 4] diffusion loss=0.436652, best=0.436652
+[Stage2][domain0-label0][Epoch 5] diffusion loss=0.433582, best=0.433582
+[Stage2][domain0-label0][Epoch 6] diffusion loss=0.426976, best=0.426976
+[Stage2][domain0-label0][Epoch 7] diffusion loss=0.415262, best=0.415262
+[Stage2][domain0-label0][Epoch 8] diffusion loss=0.411354, best=0.411354
+[Stage2][domain0-label0][Epoch 9] diffusion loss=0.413307, best=0.411354
+[Stage2][domain0-label0][Epoch 10] diffusion loss=0.406624, best=0.406624
+[Stage2][domain0-label0][Epoch 11] diffusion loss=0.404654, best=0.404654
+[Stage2][domain0-label0][Epoch 12] diffusion loss=0.395582, best=0.395582
+[Stage2][domain0-label0][Epoch 13] diffusion loss=0.389608, best=0.389608
+[Stage2][domain0-label0][Epoch 14] diffusion loss=0.377976, best=0.377976
+[Stage2][domain0-label0][Epoch 15] diffusion loss=0.383983, best=0.377976
+[Stage2][domain0-label0][Epoch 16] diffusion loss=0.379464, best=0.377976
+[Stage2][domain0-label0][Epoch 17] diffusion loss=0.378744, best=0.377976
+[Stage2][domain0-label0][Epoch 18] diffusion loss=0.377114, best=0.377114
+[Stage2][domain0-label0][Epoch 19] diffusion loss=0.378223, best=0.377114
+[Stage2][domain0-label0][Epoch 20] diffusion loss=0.365539, best=0.365539
+[Stage2][domain0-label0][Epoch 21] diffusion loss=0.370984, best=0.365539
+[Stage2][domain0-label0][Epoch 22] diffusion loss=0.364966, best=0.364966
+[Stage2][domain0-label0][Epoch 23] diffusion loss=0.357810, best=0.357810
+[Stage2][domain0-label0][Epoch 24] diffusion loss=0.363812, best=0.357810
+[Stage2][domain0-label0][Epoch 25] diffusion loss=0.359785, best=0.357810
+[Stage2][domain0-label0][Epoch 26] diffusion loss=0.348415, best=0.348415
+[Stage2][domain0-label0][Epoch 27] diffusion loss=0.351054, best=0.348415
+[Stage2][domain0-label0][Epoch 28] diffusion loss=0.349881, best=0.348415
+[Stage2][domain0-label0][Epoch 29] diffusion loss=0.344365, best=0.344365
+[Stage2][domain0-label0][Epoch 30] diffusion loss=0.348325, best=0.344365
+[Stage2][domain0-label0][Epoch 31] diffusion loss=0.344172, best=0.344172
+[Stage2][domain0-label0][Epoch 32] diffusion loss=0.348157, best=0.344172
+[Stage2][domain0-label0][Epoch 33] diffusion loss=0.340221, best=0.340221
+[Stage2][domain0-label0][Epoch 34] diffusion loss=0.342910, best=0.340221
+[Stage2][domain0-label0][Epoch 35] diffusion loss=0.330245, best=0.330245
+[Stage2][domain0-label0][Epoch 36] diffusion loss=0.341448, best=0.330245
+[Stage2][domain0-label0][Epoch 37] diffusion loss=0.334652, best=0.330245
+[Stage2][domain0-label0][Epoch 38] diffusion loss=0.329800, best=0.329800
+[Stage2][domain0-label0][Epoch 39] diffusion loss=0.333407, best=0.329800
+[Stage2][domain0-label1][Epoch 0] diffusion loss=0.443596, best=0.443596
+[Stage2][domain0-label1][Epoch 1] diffusion loss=0.418826, best=0.418826
+[Stage2][domain0-label1][Epoch 2] diffusion loss=0.396405, best=0.396405
+[Stage2][domain0-label1][Epoch 3] diffusion loss=0.382286, best=0.382286
+[Stage2][domain0-label1][Epoch 4] diffusion loss=0.369697, best=0.369697
+[Stage2][domain0-label1][Epoch 5] diffusion loss=0.357798, best=0.357798
+[Stage2][domain0-label1][Epoch 6] diffusion loss=0.346258, best=0.346258
+[Stage2][domain0-label1][Epoch 7] diffusion loss=0.340830, best=0.340830
+[Stage2][domain0-label1][Epoch 8] diffusion loss=0.332975, best=0.332975
+[Stage2][domain0-label1][Epoch 9] diffusion loss=0.326111, best=0.326111
+[Stage2][domain0-label1][Epoch 10] diffusion loss=0.317203, best=0.317203
+[Stage2][domain0-label1][Epoch 11] diffusion loss=0.315428, best=0.315428
+[Stage2][domain0-label1][Epoch 12] diffusion loss=0.311457, best=0.311457
+[Stage2][domain0-label1][Epoch 13] diffusion loss=0.308350, best=0.308350
+[Stage2][domain0-label1][Epoch 14] diffusion loss=0.305981, best=0.305981
+[Stage2][domain0-label1][Epoch 15] diffusion loss=0.298903, best=0.298903
+[Stage2][domain0-label1][Epoch 16] diffusion loss=0.297353, best=0.297353
+[Stage2][domain0-label1][Epoch 17] diffusion loss=0.291019, best=0.291019
+[Stage2][domain0-label1][Epoch 18] diffusion loss=0.288320, best=0.288320
+[Stage2][domain0-label1][Epoch 19] diffusion loss=0.280132, best=0.280132
+[Stage2][domain0-label1][Epoch 20] diffusion loss=0.277578, best=0.277578
+[Stage2][domain0-label1][Epoch 21] diffusion loss=0.275167, best=0.275167
+[Stage2][domain0-label1][Epoch 22] diffusion loss=0.272153, best=0.272153
+[Stage2][domain0-label1][Epoch 23] diffusion loss=0.265888, best=0.265888
+[Stage2][domain0-label1][Epoch 24] diffusion loss=0.261255, best=0.261255
+[Stage2][domain0-label1][Epoch 25] diffusion loss=0.257771, best=0.257771
+[Stage2][domain0-label1][Epoch 26] diffusion loss=0.250104, best=0.250104
+[Stage2][domain0-label1][Epoch 27] diffusion loss=0.249954, best=0.249954
+[Stage2][domain0-label1][Epoch 28] diffusion loss=0.247418, best=0.247418
+[Stage2][domain0-label1][Epoch 29] diffusion loss=0.242578, best=0.242578
+[Stage2][domain0-label1][Epoch 30] diffusion loss=0.243085, best=0.242578
+[Stage2][domain0-label1][Epoch 31] diffusion loss=0.235002, best=0.235002
+[Stage2][domain0-label1][Epoch 32] diffusion loss=0.236069, best=0.235002
+[Stage2][domain0-label1][Epoch 33] diffusion loss=0.228334, best=0.228334
+[Stage2][domain0-label1][Epoch 34] diffusion loss=0.227523, best=0.227523
+[Stage2][domain0-label1][Epoch 35] diffusion loss=0.223043, best=0.223043
+[Stage2][domain0-label1][Epoch 36] diffusion loss=0.219447, best=0.219447
+[Stage2][domain0-label1][Epoch 37] diffusion loss=0.216888, best=0.216888
+[Stage2][domain0-label1][Epoch 38] diffusion loss=0.215528, best=0.215528
+[Stage2][domain0-label1][Epoch 39] diffusion loss=0.212045, best=0.212045
+[Stage2][domain1-label0][Epoch 0] diffusion loss=0.413320, best=0.413320
+[Stage2][domain1-label0][Epoch 1] diffusion loss=0.407607, best=0.407607
+[Stage2][domain1-label0][Epoch 2] diffusion loss=0.397956, best=0.397956
+[Stage2][domain1-label0][Epoch 3] diffusion loss=0.398011, best=0.397956
+[Stage2][domain1-label0][Epoch 4] diffusion loss=0.382980, best=0.382980
+[Stage2][domain1-label0][Epoch 5] diffusion loss=0.378812, best=0.378812
+[Stage2][domain1-label0][Epoch 6] diffusion loss=0.374476, best=0.374476
+[Stage2][domain1-label0][Epoch 7] diffusion loss=0.367423, best=0.367423
+[Stage2][domain1-label0][Epoch 8] diffusion loss=0.367289, best=0.367289
+[Stage2][domain1-label0][Epoch 9] diffusion loss=0.359609, best=0.359609
+[Stage2][domain1-label0][Epoch 10] diffusion loss=0.355075, best=0.355075
+[Stage2][domain1-label0][Epoch 11] diffusion loss=0.355048, best=0.355048
+[Stage2][domain1-label0][Epoch 12] diffusion loss=0.349253, best=0.349253
+[Stage2][domain1-label0][Epoch 13] diffusion loss=0.341956, best=0.341956
+[Stage2][domain1-label0][Epoch 14] diffusion loss=0.345047, best=0.341956
+[Stage2][domain1-label0][Epoch 15] diffusion loss=0.342223, best=0.341956
+[Stage2][domain1-label0][Epoch 16] diffusion loss=0.347791, best=0.341956
+[Stage2][domain1-label0][Epoch 17] diffusion loss=0.334403, best=0.334403
+[Stage2][domain1-label0][Epoch 18] diffusion loss=0.337139, best=0.334403
+[Stage2][domain1-label0][Epoch 19] diffusion loss=0.329461, best=0.329461
+[Stage2][domain1-label0][Epoch 20] diffusion loss=0.327025, best=0.327025
+[Stage2][domain1-label0][Epoch 21] diffusion loss=0.323891, best=0.323891
+[Stage2][domain1-label0][Epoch 22] diffusion loss=0.323250, best=0.323250
+[Stage2][domain1-label0][Epoch 23] diffusion loss=0.319685, best=0.319685
+[Stage2][domain1-label0][Epoch 24] diffusion loss=0.319211, best=0.319211
+[Stage2][domain1-label0][Epoch 25] diffusion loss=0.330493, best=0.319211
+[Stage2][domain1-label0][Epoch 26] diffusion loss=0.315899, best=0.315899
+[Stage2][domain1-label0][Epoch 27] diffusion loss=0.316035, best=0.315899
+[Stage2][domain1-label0][Epoch 28] diffusion loss=0.314034, best=0.314034
+[Stage2][domain1-label0][Epoch 29] diffusion loss=0.306121, best=0.306121
+[Stage2][domain1-label0][Epoch 30] diffusion loss=0.315753, best=0.306121
+[Stage2][domain1-label0][Epoch 31] diffusion loss=0.303843, best=0.303843
+[Stage2][domain1-label0][Epoch 32] diffusion loss=0.303292, best=0.303292
+[Stage2][domain1-label0][Epoch 33] diffusion loss=0.298098, best=0.298098
+[Stage2][domain1-label0][Epoch 34] diffusion loss=0.302437, best=0.298098
+[Stage2][domain1-label0][Epoch 35] diffusion loss=0.301959, best=0.298098
+[Stage2][domain1-label0][Epoch 36] diffusion loss=0.298240, best=0.298098
+[Stage2][domain1-label0][Epoch 37] diffusion loss=0.300190, best=0.298098
+[Stage2][domain1-label0][Epoch 38] diffusion loss=0.294595, best=0.294595
+[Stage2][domain1-label0][Epoch 39] diffusion loss=0.287967, best=0.287967
+[Stage2][domain1-label1][Epoch 0] diffusion loss=0.456868, best=0.456868
+[Stage2][domain1-label1][Epoch 1] diffusion loss=0.415981, best=0.415981
+[Stage2][domain1-label1][Epoch 2] diffusion loss=0.382266, best=0.382266
+[Stage2][domain1-label1][Epoch 3] diffusion loss=0.363653, best=0.363653
+[Stage2][domain1-label1][Epoch 4] diffusion loss=0.350954, best=0.350954
+[Stage2][domain1-label1][Epoch 5] diffusion loss=0.342515, best=0.342515
+[Stage2][domain1-label1][Epoch 6] diffusion loss=0.329361, best=0.329361
+[Stage2][domain1-label1][Epoch 7] diffusion loss=0.316715, best=0.316715
+[Stage2][domain1-label1][Epoch 8] diffusion loss=0.309615, best=0.309615
+[Stage2][domain1-label1][Epoch 9] diffusion loss=0.305665, best=0.305665
+[Stage2][domain1-label1][Epoch 10] diffusion loss=0.299449, best=0.299449
+[Stage2][domain1-label1][Epoch 11] diffusion loss=0.291264, best=0.291264
+[Stage2][domain1-label1][Epoch 12] diffusion loss=0.285670, best=0.285670
+[Stage2][domain1-label1][Epoch 13] diffusion loss=0.277970, best=0.277970
+[Stage2][domain1-label1][Epoch 14] diffusion loss=0.269943, best=0.269943
+[Stage2][domain1-label1][Epoch 15] diffusion loss=0.263663, best=0.263663
+[Stage2][domain1-label1][Epoch 16] diffusion loss=0.257896, best=0.257896
+[Stage2][domain1-label1][Epoch 17] diffusion loss=0.251893, best=0.251893
+[Stage2][domain1-label1][Epoch 18] diffusion loss=0.245044, best=0.245044
+[Stage2][domain1-label1][Epoch 19] diffusion loss=0.238592, best=0.238592
+[Stage2][domain1-label1][Epoch 20] diffusion loss=0.228751, best=0.228751
+[Stage2][domain1-label1][Epoch 21] diffusion loss=0.223833, best=0.223833
+[Stage2][domain1-label1][Epoch 22] diffusion loss=0.218626, best=0.218626
+[Stage2][domain1-label1][Epoch 23] diffusion loss=0.212425, best=0.212425
+[Stage2][domain1-label1][Epoch 24] diffusion loss=0.206944, best=0.206944
+[Stage2][domain1-label1][Epoch 25] diffusion loss=0.201992, best=0.201992
+[Stage2][domain1-label1][Epoch 26] diffusion loss=0.194173, best=0.194173
+[Stage2][domain1-label1][Epoch 27] diffusion loss=0.189255, best=0.189255
+[Stage2][domain1-label1][Epoch 28] diffusion loss=0.183528, best=0.183528
+[Stage2][domain1-label1][Epoch 29] diffusion loss=0.179850, best=0.179850
+[Stage2][domain1-label1][Epoch 30] diffusion loss=0.173541, best=0.173541
+[Stage2][domain1-label1][Epoch 31] diffusion loss=0.170706, best=0.170706
+[Stage2][domain1-label1][Epoch 32] diffusion loss=0.163943, best=0.163943
+[Stage2][domain1-label1][Epoch 33] diffusion loss=0.161122, best=0.161122
+[Stage2][domain1-label1][Epoch 34] diffusion loss=0.159367, best=0.159367
+[Stage2][domain1-label1][Epoch 35] diffusion loss=0.155784, best=0.155784
+[Stage2][domain1-label1][Epoch 36] diffusion loss=0.147210, best=0.147210
+[Stage2][domain1-label1][Epoch 37] diffusion loss=0.144780, best=0.144780
+[Stage2][domain1-label1][Epoch 38] diffusion loss=0.141609, best=0.141609
+[Stage2][domain1-label1][Epoch 39] diffusion loss=0.138916, best=0.138916
+[Stage2][domain2-label0][Epoch 0] diffusion loss=0.474656, best=0.474656
+[Stage2][domain2-label0][Epoch 1] diffusion loss=0.476052, best=0.474656
+[Stage2][domain2-label0][Epoch 2] diffusion loss=0.484228, best=0.474656
+[Stage2][domain2-label0][Epoch 3] diffusion loss=0.464033, best=0.464033
+[Stage2][domain2-label0][Epoch 4] diffusion loss=0.444652, best=0.444652
+[Stage2][domain2-label0][Epoch 5] diffusion loss=0.441196, best=0.441196
+[Stage2][domain2-label0][Epoch 6] diffusion loss=0.457103, best=0.441196
+[Stage2][domain2-label0][Epoch 7] diffusion loss=0.430852, best=0.430852
+[Stage2][domain2-label0][Epoch 8] diffusion loss=0.491205, best=0.430852
+[Stage2][domain2-label0][Epoch 9] diffusion loss=0.452380, best=0.430852
+[Stage2][domain2-label0][Epoch 10] diffusion loss=0.432134, best=0.430852
+[Stage2][domain2-label0][Epoch 11] diffusion loss=0.452652, best=0.430852
+[Stage2][domain2-label0][Epoch 12] diffusion loss=0.442608, best=0.430852
+[Stage2][domain2-label0][Epoch 13] diffusion loss=0.431702, best=0.430852
+[Stage2][domain2-label0][Epoch 14] diffusion loss=0.450857, best=0.430852
+[Stage2][domain2-label0][Epoch 15] diffusion loss=0.418626, best=0.418626
+[Stage2][domain2-label0][Epoch 16] diffusion loss=0.442967, best=0.418626
+[Stage2][domain2-label0][Epoch 17] diffusion loss=0.421056, best=0.418626
+[Stage2][domain2-label0][Epoch 18] diffusion loss=0.401322, best=0.401322
+[Stage2][domain2-label0][Epoch 19] diffusion loss=0.458474, best=0.401322
+[Stage2][domain2-label0][Epoch 20] diffusion loss=0.427448, best=0.401322
+[Stage2][domain2-label0][Epoch 21] diffusion loss=0.427317, best=0.401322
+[Stage2][domain2-label0][Epoch 22] diffusion loss=0.447136, best=0.401322
+[Stage2][domain2-label0][Epoch 23] diffusion loss=0.422787, best=0.401322
+[Stage2][domain2-label0][Epoch 24] diffusion loss=0.424863, best=0.401322
+[Stage2][domain2-label0][Epoch 25] diffusion loss=0.406994, best=0.401322
+[Stage2][domain2-label0][Epoch 26] diffusion loss=0.410692, best=0.401322
+[Stage2][domain2-label0][Epoch 27] diffusion loss=0.401858, best=0.401322
+[Stage2][domain2-label0][Epoch 28] diffusion loss=0.424886, best=0.401322
+[Stage2][domain2-label0][Epoch 29] diffusion loss=0.422689, best=0.401322
+[Stage2][domain2-label0][Epoch 30] diffusion loss=0.419829, best=0.401322
+[Stage2][domain2-label0][Epoch 31] diffusion loss=0.399705, best=0.399705
+[Stage2][domain2-label0][Epoch 32] diffusion loss=0.411791, best=0.399705
+[Stage2][domain2-label0][Epoch 33] diffusion loss=0.369652, best=0.369652
+[Stage2][domain2-label0][Epoch 34] diffusion loss=0.392632, best=0.369652
+[Stage2][domain2-label0][Epoch 35] diffusion loss=0.407032, best=0.369652
+[Stage2][domain2-label0][Epoch 36] diffusion loss=0.400164, best=0.369652
+[Stage2][domain2-label0][Epoch 37] diffusion loss=0.407083, best=0.369652
+[Stage2][domain2-label0][Epoch 38] diffusion loss=0.408129, best=0.369652
+[Stage2][domain2-label0][Epoch 39] diffusion loss=0.419536, best=0.369652
+[Stage2][domain2-label1][Epoch 0] diffusion loss=0.428519, best=0.428519
+[Stage2][domain2-label1][Epoch 1] diffusion loss=0.432486, best=0.428519
+[Stage2][domain2-label1][Epoch 2] diffusion loss=0.419069, best=0.419069
+[Stage2][domain2-label1][Epoch 3] diffusion loss=0.404450, best=0.404450
+[Stage2][domain2-label1][Epoch 4] diffusion loss=0.395016, best=0.395016
+[Stage2][domain2-label1][Epoch 5] diffusion loss=0.396433, best=0.395016
+[Stage2][domain2-label1][Epoch 6] diffusion loss=0.381186, best=0.381186
+[Stage2][domain2-label1][Epoch 7] diffusion loss=0.378405, best=0.378405
+[Stage2][domain2-label1][Epoch 8] diffusion loss=0.376789, best=0.376789
+[Stage2][domain2-label1][Epoch 9] diffusion loss=0.371391, best=0.371391
+[Stage2][domain2-label1][Epoch 10] diffusion loss=0.382043, best=0.371391
+[Stage2][domain2-label1][Epoch 11] diffusion loss=0.361761, best=0.361761
+[Stage2][domain2-label1][Epoch 12] diffusion loss=0.355928, best=0.355928
+[Stage2][domain2-label1][Epoch 13] diffusion loss=0.360045, best=0.355928
+[Stage2][domain2-label1][Epoch 14] diffusion loss=0.352745, best=0.352745
+[Stage2][domain2-label1][Epoch 15] diffusion loss=0.356313, best=0.352745
+[Stage2][domain2-label1][Epoch 16] diffusion loss=0.352339, best=0.352339
+[Stage2][domain2-label1][Epoch 17] diffusion loss=0.344684, best=0.344684
+[Stage2][domain2-label1][Epoch 18] diffusion loss=0.340707, best=0.340707
+[Stage2][domain2-label1][Epoch 19] diffusion loss=0.330082, best=0.330082
+[Stage2][domain2-label1][Epoch 20] diffusion loss=0.347100, best=0.330082
+[Stage2][domain2-label1][Epoch 21] diffusion loss=0.335141, best=0.330082
+[Stage2][domain2-label1][Epoch 22] diffusion loss=0.337839, best=0.330082
+[Stage2][domain2-label1][Epoch 23] diffusion loss=0.332990, best=0.330082
+[Stage2][domain2-label1][Epoch 24] diffusion loss=0.332860, best=0.330082
+[Stage2][domain2-label1][Epoch 25] diffusion loss=0.335233, best=0.330082
+[Stage2][domain2-label1][Epoch 26] diffusion loss=0.319091, best=0.319091
+[Stage2][domain2-label1][Epoch 27] diffusion loss=0.320718, best=0.319091
+[Stage2][domain2-label1][Epoch 28] diffusion loss=0.318419, best=0.318419
+[Stage2][domain2-label1][Epoch 29] diffusion loss=0.322267, best=0.318419
+[Stage2][domain2-label1][Epoch 30] diffusion loss=0.327745, best=0.318419
+[Stage2][domain2-label1][Epoch 31] diffusion loss=0.314067, best=0.314067
+[Stage2][domain2-label1][Epoch 32] diffusion loss=0.318025, best=0.314067
+[Stage2][domain2-label1][Epoch 33] diffusion loss=0.317336, best=0.314067
+[Stage2][domain2-label1][Epoch 34] diffusion loss=0.314326, best=0.314067
+[Stage2][domain2-label1][Epoch 35] diffusion loss=0.316656, best=0.314067
+[Stage2][domain2-label1][Epoch 36] diffusion loss=0.309681, best=0.309681
+[Stage2][domain2-label1][Epoch 37] diffusion loss=0.324229, best=0.309681
+[Stage2][domain2-label1][Epoch 38] diffusion loss=0.313216, best=0.309681
+[Stage2][domain2-label1][Epoch 39] diffusion loss=0.309297, best=0.309297
+
+===== Stage 3: Per-domain domain classifier =====
+[Stage3][target=1][Epoch 0] classifier loss=0.663507, best=0.663507
+[Stage3][target=1][Epoch 1] classifier loss=0.627656, best=0.627656
+[Stage3][target=1][Epoch 2] classifier loss=0.625355, best=0.625355
+[Stage3][target=1][Epoch 3] classifier loss=0.623376, best=0.623376
+[Stage3][target=1][Epoch 4] classifier loss=0.620886, best=0.620886
+[Stage3][target=1][Epoch 5] classifier loss=0.617944, best=0.617944
+[Stage3][target=1][Epoch 6] classifier loss=0.612304, best=0.612304
+[Stage3][target=1][Epoch 7] classifier loss=0.601946, best=0.601946
+[Stage3][target=1][Epoch 8] classifier loss=0.591199, best=0.591199
+[Stage3][target=1][Epoch 9] classifier loss=0.581573, best=0.581573
+[Stage3][target=1][Epoch 10] classifier loss=0.572605, best=0.572605
+[Stage3][target=1][Epoch 11] classifier loss=0.565009, best=0.565009
+[Stage3][target=1][Epoch 12] classifier loss=0.559592, best=0.559592
+[Stage3][target=1][Epoch 13] classifier loss=0.554697, best=0.554697
+[Stage3][target=1][Epoch 14] classifier loss=0.551270, best=0.551270
+[Stage3][target=2][Epoch 0] classifier loss=0.679849, best=0.679849
+[Stage3][target=2][Epoch 1] classifier loss=0.676409, best=0.676409
+[Stage3][target=2][Epoch 2] classifier loss=0.670860, best=0.670860
+[Stage3][target=2][Epoch 3] classifier loss=0.662737, best=0.662737
+[Stage3][target=2][Epoch 4] classifier loss=0.651257, best=0.651257
+[Stage3][target=2][Epoch 5] classifier loss=0.630377, best=0.630377
+[Stage3][target=2][Epoch 6] classifier loss=0.611162, best=0.611162
+[Stage3][target=2][Epoch 7] classifier loss=0.601721, best=0.601721
+[Stage3][target=2][Epoch 8] classifier loss=0.595516, best=0.595516
+[Stage3][target=2][Epoch 9] classifier loss=0.588725, best=0.588725
+[Stage3][target=2][Epoch 10] classifier loss=0.582771, best=0.582771
+[Stage3][target=2][Epoch 11] classifier loss=0.576867, best=0.576867
+[Stage3][target=2][Epoch 12] classifier loss=0.570288, best=0.570288
+[Stage3][target=2][Epoch 13] classifier loss=0.564172, best=0.564172
+[Stage3][target=2][Epoch 14] classifier loss=0.556757, best=0.556757
+[Stage3][target=3][Epoch 0] classifier loss=0.612040, best=0.612040
+[Stage3][target=3][Epoch 1] classifier loss=0.332254, best=0.332254
+[Stage3][target=3][Epoch 2] classifier loss=0.299543, best=0.299543
+[Stage3][target=3][Epoch 3] classifier loss=0.298239, best=0.298239
+[Stage3][target=3][Epoch 4] classifier loss=0.298491, best=0.298239
+[Stage3][target=3][Epoch 5] classifier loss=0.297713, best=0.297713
+[Stage3][target=3][Epoch 6] classifier loss=0.296997, best=0.296997
+[Stage3][target=3][Epoch 7] classifier loss=0.296323, best=0.296323
+[Stage3][target=3][Epoch 8] classifier loss=0.294881, best=0.294881
+[Stage3][target=3][Epoch 9] classifier loss=0.293978, best=0.293978
+[Stage3][target=3][Epoch 10] classifier loss=0.291871, best=0.291871
+[Stage3][target=3][Epoch 11] classifier loss=0.288622, best=0.288622
+[Stage3][target=3][Epoch 12] classifier loss=0.286003, best=0.286003
+[Stage3][target=3][Epoch 13] classifier loss=0.283239, best=0.283239
+[Stage3][target=3][Epoch 14] classifier loss=0.280126, best=0.280126
+
+===== Stage 4: Branch baseline vs all-domain diffusion-augment =====
+[Stage4][Epoch 0] baseline_loss=0.130768, augment_loss=0.653215
+[Stage4][Epoch 0][AugStats] domain0: source_candidates=57690 (label0=10449, label1=47241), transferred=2861 (label0=550, label1=2311), transfer_rate=4.9593%, target_true=83538, target_fake=1536, augment_total=87935, transferred_share_in_aug=3.2535%, num_batches=3, diag_label0=(cand=10449, selected=550 (5.26%), scan_pred_mean=0.7156, scan_pred_range=[0.3273,0.8946], below0.5=0.28% below0.6=9.40% below0.7=40.58%, top_steps=30:536,48:4,39:2,40:1,42:1), diag_label1=(cand=47241, selected=2311 (4.89%), scan_pred_mean=0.7244, scan_pred_range=[0.3268,0.9021], below0.5=0.26% below0.6=8.73% below0.7=36.47%, top_steps=30:2249,41:8,48:8,39:5,45:5) | domain1: source_candidates=35556 (label0=6613, label1=28943), transferred=33056 (label0=6268, label1=26788), transfer_rate=92.9688%, target_true=99960, target_fake=1024, augment_total=134040, transferred_share_in_aug=24.6613%, num_batches=2, diag_label0=(cand=6613, selected=6268 (94.78%), scan_pred_mean=0.4794, scan_pred_range=[0.1418,0.7459], below0.5=38.72% below0.6=96.52% below0.7=99.75%, top_steps=30:5940,41:28,37:26,44:24,36:22), diag_label1=(cand=28943, selected=26788 (92.55%), scan_pred_mean=0.4953, scan_pred_range=[0.1326,0.8858], below0.5=30.88% below0.6=95.37% below0.7=99.25%, top_steps=30:24774,31:182,32:153,34:143,33:140) | domain2: source_candidates=77826 (label0=15258, label1=62568), transferred=0 (label0=0, label1=0), transfer_rate=0.0000%, target_true=30840, target_fake=2048, augment_total=32888, transferred_share_in_aug=0.0000%, num_batches=4, diag_label0=(cand=15258, selected=0 (0.00%), scan_pred_mean=0.9085, scan_pred_range=[0.7683,0.9710], below0.5=0.00% below0.6=0.00% below0.7=0.00%, top_steps=none), diag_label1=(cand=62568, selected=0 (0.00%), scan_pred_mean=0.9112, scan_pred_range=[0.7712,0.9741], below0.5=0.00% below0.6=0.00% below0.7=0.00%, top_steps=none)
+[Metrics][baseline-valid-domain0][Epoch 0] {'auc': 0.7361126901475704, 'logloss': 1.1820657127098477, 'count': 3369, 'pos': 2587.0, 'neg': 782.0}
+[Metrics][baseline-valid-domain1][Epoch 0] {'auc': 0.7536291297738069, 'logloss': 0.8319610528620546, 'count': 6138, 'pos': 4831.0, 'neg': 1307.0}
+[Metrics][baseline-valid-domain2][Epoch 0] {'auc': 0.6234432656826568, 'logloss': 0.8965973448416826, 'count': 941, 'pos': 813.0, 'neg': 128.0}
+[Metrics][baseline-valid-overall][Epoch 0] {'auc': 0.7365886646887102, 'logloss': 0.9506751947328063, 'count': 10448, 'pos': 8231.0, 'neg': 2217.0}
+[Metrics][baseline-valid-domain_macro][Epoch 0] {'auc': 0.7043950285346781, 'logloss': 0.9702080368045283, 'count': 10448}
+[Metrics][baseline-valid-domain_weighted][Epoch 0] {'auc': 0.736255681916747, 'logloss': 0.9506751943034831, 'count': 10448}
+[AUCSummary][baseline-valid][Epoch 0] domain0=0.736113, domain1=0.753629, domain2=0.623443, domain_macro=0.704395, domain_weighted=0.736256, overall_global=0.736589
+[Metrics][baseline-test-domain0][Epoch 0] {'auc': 0.7174910825856341, 'logloss': 1.2438044478748802, 'count': 5911, 'pos': 4614.0, 'neg': 1297.0}
+[Metrics][baseline-test-domain1][Epoch 0] {'auc': 0.7250640433281951, 'logloss': 0.8881170031081673, 'count': 8588, 'pos': 6852.0, 'neg': 1736.0}
+[Metrics][baseline-test-domain2][Epoch 0] {'auc': 0.6344391736592796, 'logloss': 0.7928176940022734, 'count': 1610, 'pos': 1401.0, 'neg': 209.0}
+[Metrics][baseline-test-overall][Epoch 0] {'auc': 0.7118530601622723, 'logloss': 1.009107542780513, 'count': 16109, 'pos': 12867.0, 'neg': 3242.0}
+[Metrics][baseline-test-domain_macro][Epoch 0] {'auc': 0.6923314331910362, 'logloss': 0.9749130483284403, 'count': 16109}
+[Metrics][baseline-test-domain_weighted][Epoch 0] {'auc': 0.7132278144427129, 'logloss': 1.0091075424560816, 'count': 16109}
+[AUCSummary][baseline-test][Epoch 0] domain0=0.717491, domain1=0.725064, domain2=0.634439, domain_macro=0.692331, domain_weighted=0.713228, overall_global=0.711853
+[Metrics][augment-valid-domain0][Epoch 0] {'auc': 0.7480373537963276, 'logloss': 0.48283146496489, 'count': 3369, 'pos': 2587.0, 'neg': 782.0}
+[Metrics][augment-valid-domain1][Epoch 0] {'auc': 0.7626441670307978, 'logloss': 0.5539058247121932, 'count': 6138, 'pos': 4831.0, 'neg': 1307.0}
+[Metrics][augment-valid-domain2][Epoch 0] {'auc': 0.6381938038130381, 'logloss': 0.612945002787558, 'count': 941, 'pos': 813.0, 'neg': 128.0}
+[Metrics][augment-valid-overall][Epoch 0] {'auc': 0.704790524528901, 'logloss': 0.5363049775756535, 'count': 10448, 'pos': 8231.0, 'neg': 2217.0}
+[Metrics][augment-valid-domain_macro][Epoch 0] {'auc': 0.7162917748800545, 'logloss': 0.5498940974882137, 'count': 10448}
+[Metrics][augment-valid-domain_weighted][Epoch 0] {'auc': 0.7467255083808321, 'logloss': 0.536304977524239, 'count': 10448}
+[AUCSummary][augment-valid][Epoch 0] domain0=0.748037, domain1=0.762644, domain2=0.638194, domain_macro=0.716292, domain_weighted=0.746726, overall_global=0.704791
+[Metrics][augment-test-domain0][Epoch 0] {'auc': 0.7327005670449529, 'logloss': 0.47707355807578294, 'count': 5911, 'pos': 4614.0, 'neg': 1297.0}
+[Metrics][augment-test-domain1][Epoch 0] {'auc': 0.7352493957161419, 'logloss': 0.5507392943046665, 'count': 8588, 'pos': 6852.0, 'neg': 1736.0}
+[Metrics][augment-test-domain2][Epoch 0] {'auc': 0.6501507808844673, 'logloss': 0.6108387924378132, 'count': 1610, 'pos': 1401.0, 'neg': 209.0}
+[Metrics][augment-test-overall][Epoch 0] {'auc': 0.6823391805127071, 'logloss': 0.5297151480597556, 'count': 16109, 'pos': 12867.0, 'neg': 3242.0}
+[Metrics][augment-test-domain_macro][Epoch 0] {'auc': 0.7060335812151873, 'logloss': 0.5462172149394209, 'count': 16109}
+[Metrics][augment-test-domain_weighted][Epoch 0] {'auc': 0.7258090272168934, 'logloss': 0.5297151478738163, 'count': 16109}
+[AUCSummary][augment-test][Epoch 0] domain0=0.732701, domain1=0.735249, domain2=0.650151, domain_macro=0.706034, domain_weighted=0.725809, overall_global=0.682339
+[Stage4][Epoch 0] new best baseline domain0 valid auc=0.736113
+[Stage4][Epoch 0] new best augment domain0 valid auc=0.748037
+[Stage4][Epoch 0] new best baseline domain1 valid auc=0.753629
+[Stage4][Epoch 0] new best augment domain1 valid auc=0.762644
+[Stage4][Epoch 0] new best baseline domain2 valid auc=0.623443
+[Stage4][Epoch 0] new best augment domain2 valid auc=0.638194
+[Stage4][Epoch 0] new best baseline overall valid auc=0.736589, test={'domain0': {'auc': 0.7174910825856341, 'logloss': 1.2438044478748802, 'count': 5911, 'pos': 4614.0, 'neg': 1297.0}, 'domain1': {'auc': 0.7250640433281951, 'logloss': 0.8881170031081673, 'count': 8588, 'pos': 6852.0, 'neg': 1736.0}, 'domain2': {'auc': 0.6344391736592796, 'logloss': 0.7928176940022734, 'count': 1610, 'pos': 1401.0, 'neg': 209.0}, 'overall': {'auc': 0.7118530601622723, 'logloss': 1.009107542780513, 'count': 16109, 'pos': 12867.0, 'neg': 3242.0}, 'domain_macro': {'auc': 0.6923314331910362, 'logloss': 0.9749130483284403, 'count': 16109}, 'domain_weighted': {'auc': 0.7132278144427129, 'logloss': 1.0091075424560816, 'count': 16109}}
+[Stage4][Epoch 0] new best augment overall valid auc=0.704791, test={'domain0': {'auc': 0.7327005670449529, 'logloss': 0.47707355807578294, 'count': 5911, 'pos': 4614.0, 'neg': 1297.0}, 'domain1': {'auc': 0.7352493957161419, 'logloss': 0.5507392943046665, 'count': 8588, 'pos': 6852.0, 'neg': 1736.0}, 'domain2': {'auc': 0.6501507808844673, 'logloss': 0.6108387924378132, 'count': 1610, 'pos': 1401.0, 'neg': 209.0}, 'overall': {'auc': 0.6823391805127071, 'logloss': 0.5297151480597556, 'count': 16109, 'pos': 12867.0, 'neg': 3242.0}, 'domain_macro': {'auc': 0.7060335812151873, 'logloss': 0.5462172149394209, 'count': 16109}, 'domain_weighted': {'auc': 0.7258090272168934, 'logloss': 0.5297151478738163, 'count': 16109}}
+[Stage4][Epoch 1] baseline_loss=0.107055, augment_loss=0.507466
+[Stage4][Epoch 1][AugStats] domain0: source_candidates=57690 (label0=10449, label1=47241), transferred=3034 (label0=574, label1=2460), transfer_rate=5.2591%, target_true=83538, target_fake=1536, augment_total=88108, transferred_share_in_aug=3.4435%, num_batches=3, diag_label0=(cand=10449, selected=574 (5.49%), scan_pred_mean=0.7167, scan_pred_range=[0.3033,0.8945], below0.5=0.29% below0.6=9.33% below0.7=40.19%, top_steps=30:561,37:2,44:2,45:2,43:2), diag_label1=(cand=47241, selected=2460 (5.21%), scan_pred_mean=0.7250, scan_pred_range=[0.3214,0.9032], below0.5=0.27% below0.6=8.66% below0.7=36.04%, top_steps=30:2412,49:6,47:5,39:4,45:4) | domain1: source_candidates=35556 (label0=6613, label1=28943), transferred=33048 (label0=6228, label1=26820), transfer_rate=92.9463%, target_true=99960, target_fake=1024, augment_total=134032, transferred_share_in_aug=24.6568%, num_batches=2, diag_label0=(cand=6613, selected=6228 (94.18%), scan_pred_mean=0.4813, scan_pred_range=[0.1576,0.7401], below0.5=37.04% below0.6=96.43% below0.7=99.67%, top_steps=30:5911,34:26,35:25,40:22,42:22), diag_label1=(cand=28943, selected=26820 (92.66%), scan_pred_mean=0.4941, scan_pred_range=[0.1326,0.8205], below0.5=31.11% below0.6=95.70% below0.7=99.42%, top_steps=30:24799,31:191,33:180,32:148,34:125) | domain2: source_candidates=77826 (label0=15258, label1=62568), transferred=0 (label0=0, label1=0), transfer_rate=0.0000%, target_true=30840, target_fake=2048, augment_total=32888, transferred_share_in_aug=0.0000%, num_batches=4, diag_label0=(cand=15258, selected=0 (0.00%), scan_pred_mean=0.9087, scan_pred_range=[0.7764,0.9745], below0.5=0.00% below0.6=0.00% below0.7=0.00%, top_steps=none), diag_label1=(cand=62568, selected=0 (0.00%), scan_pred_mean=0.9114, scan_pred_range=[0.7635,0.9740], below0.5=0.00% below0.6=0.00% below0.7=0.00%, top_steps=none)
+[Metrics][baseline-valid-domain0][Epoch 1] {'auc': 0.7207647029165105, 'logloss': 0.9372062973486333, 'count': 3369, 'pos': 2587.0, 'neg': 782.0}
+[Metrics][baseline-valid-domain1][Epoch 1] {'auc': 0.7419172783779585, 'logloss': 0.7072620371089339, 'count': 6138, 'pos': 4831.0, 'neg': 1307.0}
+[Metrics][baseline-valid-domain2][Epoch 1] {'auc': 0.6227273600861009, 'logloss': 1.0347195598978451, 'count': 941, 'pos': 813.0, 'neg': 128.0}
+[Metrics][baseline-valid-overall][Epoch 1] {'auc': 0.7267051845923694, 'logloss': 0.8109009850390988, 'count': 10448, 'pos': 8231.0, 'neg': 2217.0}
+[Metrics][baseline-valid-domain_macro][Epoch 1] {'auc': 0.6951364471268566, 'logloss': 0.8930626314518042, 'count': 10448}
+[Metrics][baseline-valid-domain_weighted][Epoch 1] {'auc': 0.7243616945492587, 'logloss': 0.8109009863520343, 'count': 10448}
+[AUCSummary][baseline-valid][Epoch 1] domain0=0.720765, domain1=0.741917, domain2=0.622727, domain_macro=0.695136, domain_weighted=0.724362, overall_global=0.726705
+[Metrics][baseline-test-domain0][Epoch 1] {'auc': 0.706752253123894, 'logloss': 0.9512822290129157, 'count': 5911, 'pos': 4614.0, 'neg': 1297.0}
+[Metrics][baseline-test-domain1][Epoch 1] {'auc': 0.7203584812265112, 'logloss': 0.7428615472855387, 'count': 8588, 'pos': 6852.0, 'neg': 1736.0}
+[Metrics][baseline-test-domain2][Epoch 1] {'auc': 0.633564883593059, 'logloss': 0.9049522524461935, 'count': 1610, 'pos': 1401.0, 'neg': 209.0}
+[Metrics][baseline-test-overall][Epoch 1] {'auc': 0.7114484796695965, 'logloss': 0.835538977143156, 'count': 16109, 'pos': 12867.0, 'neg': 3242.0}
+[Metrics][baseline-test-domain_macro][Epoch 1] {'auc': 0.6868918726478214, 'logloss': 0.8663653429148827, 'count': 16109}
+[Metrics][baseline-test-domain_weighted][Epoch 1] {'auc': 0.7066913320239271, 'logloss': 0.8355389751208593, 'count': 16109}
+[AUCSummary][baseline-test][Epoch 1] domain0=0.706752, domain1=0.720358, domain2=0.633565, domain_macro=0.686892, domain_weighted=0.706691, overall_global=0.711448
+[Metrics][augment-valid-domain0][Epoch 1] {'auc': 0.7480870316564131, 'logloss': 0.4782201200160386, 'count': 3369, 'pos': 2587.0, 'neg': 782.0}
+[Metrics][augment-valid-domain1][Epoch 1] {'auc': 0.7721725777333552, 'logloss': 0.48922608679354684, 'count': 6138, 'pos': 4831.0, 'neg': 1307.0}
+[Metrics][augment-valid-domain2][Epoch 1] {'auc': 0.6388760762607626, 'logloss': 0.44423043425381287, 'count': 941, 'pos': 813.0, 'neg': 128.0}
+[Metrics][augment-valid-overall][Epoch 1] {'auc': 0.7068277199079116, 'logloss': 0.4816246310817488, 'count': 10448, 'pos': 8231.0, 'neg': 2217.0}
+[Metrics][augment-valid-domain_macro][Epoch 1] {'auc': 0.7197118952168436, 'logloss': 0.4705588803544661, 'count': 10448}
+[Metrics][augment-valid-domain_weighted][Epoch 1] {'auc': 0.7524007350248054, 'logloss': 0.48162463090597835, 'count': 10448}
+[AUCSummary][augment-valid][Epoch 1] domain0=0.748087, domain1=0.772173, domain2=0.638876, domain_macro=0.719712, domain_weighted=0.752401, overall_global=0.706828
+[Metrics][augment-test-domain0][Epoch 1] {'auc': 0.7331047039632321, 'logloss': 0.47379203715442225, 'count': 5911, 'pos': 4614.0, 'neg': 1297.0}
+[Metrics][augment-test-domain1][Epoch 1] {'auc': 0.7429726360630687, 'logloss': 0.47826166988705465, 'count': 8588, 'pos': 6852.0, 'neg': 1736.0}
+[Metrics][augment-test-domain2][Epoch 1] {'auc': 0.6470805200659815, 'logloss': 0.4375283919744797, 'count': 1610, 'pos': 1401.0, 'neg': 209.0}
+[Metrics][augment-test-overall][Epoch 1] {'auc': 0.6828860126285112, 'logloss': 0.47255054114252104, 'count': 16109, 'pos': 12867.0, 'neg': 3242.0}
+[Metrics][augment-test-domain_macro][Epoch 1] {'auc': 0.7077192866974276, 'logloss': 0.46319403300531886, 'count': 16109}
+[Metrics][augment-test-domain_weighted][Epoch 1] {'auc': 0.7297678652270488, 'logloss': 0.4725505409205244, 'count': 16109}
+[AUCSummary][augment-test][Epoch 1] domain0=0.733105, domain1=0.742973, domain2=0.647081, domain_macro=0.707719, domain_weighted=0.729768, overall_global=0.682886
+[Stage4][Epoch 1] new best augment domain0 valid auc=0.748087
+[Stage4][Epoch 1] new best augment domain1 valid auc=0.772173
+[Stage4][Epoch 1] new best augment domain2 valid auc=0.638876
+[Stage4][Epoch 1] new best augment overall valid auc=0.706828, test={'domain0': {'auc': 0.7331047039632321, 'logloss': 0.47379203715442225, 'count': 5911, 'pos': 4614.0, 'neg': 1297.0}, 'domain1': {'auc': 0.7429726360630687, 'logloss': 0.47826166988705465, 'count': 8588, 'pos': 6852.0, 'neg': 1736.0}, 'domain2': {'auc': 0.6470805200659815, 'logloss': 0.4375283919744797, 'count': 1610, 'pos': 1401.0, 'neg': 209.0}, 'overall': {'auc': 0.6828860126285112, 'logloss': 0.47255054114252104, 'count': 16109, 'pos': 12867.0, 'neg': 3242.0}, 'domain_macro': {'auc': 0.7077192866974276, 'logloss': 0.46319403300531886, 'count': 16109}, 'domain_weighted': {'auc': 0.7297678652270488, 'logloss': 0.4725505409205244, 'count': 16109}}
+[Stage4][Epoch 2] baseline_loss=0.096867, augment_loss=0.397086
+[Stage4][Epoch 2][AugStats] domain0: source_candidates=57690 (label0=10449, label1=47241), transferred=2938 (label0=562, label1=2376), transfer_rate=5.0927%, target_true=83538, target_fake=1536, augment_total=88012, transferred_share_in_aug=3.3382%, num_batches=3, diag_label0=(cand=10449, selected=562 (5.38%), scan_pred_mean=0.7157, scan_pred_range=[0.3479,0.8795], below0.5=0.28% below0.6=9.73% below0.7=40.38%, top_steps=30:551,44:3,49:3,45:2,43:1), diag_label1=(cand=47241, selected=2376 (5.03%), scan_pred_mean=0.7239, scan_pred_range=[0.3297,0.9000], below0.5=0.26% below0.6=8.81% below0.7=36.66%, top_steps=30:2328,40:6,42:5,49:5,37:4) | domain1: source_candidates=35556 (label0=6613, label1=28943), transferred=32946 (label0=6245, label1=26701), transfer_rate=92.6595%, target_true=99960, target_fake=1024, augment_total=133930, transferred_share_in_aug=24.5994%, num_batches=2, diag_label0=(cand=6613, selected=6245 (94.44%), scan_pred_mean=0.4816, scan_pred_range=[0.1280,0.7914], below0.5=38.85% below0.6=96.12% below0.7=98.96%, top_steps=30:5924,31:34,33:29,32:26,35:25), diag_label1=(cand=28943, selected=26701 (92.25%), scan_pred_mean=0.4959, scan_pred_range=[0.1146,0.8224], below0.5=30.18% below0.6=95.42% below0.7=99.17%, top_steps=30:24701,32:163,33:156,31:147,35:140) | domain2: source_candidates=77826 (label0=15258, label1=62568), transferred=0 (label0=0, label1=0), transfer_rate=0.0000%, target_true=30840, target_fake=2048, augment_total=32888, transferred_share_in_aug=0.0000%, num_batches=4, diag_label0=(cand=15258, selected=0 (0.00%), scan_pred_mean=0.9089, scan_pred_range=[0.7639,0.9712], below0.5=0.00% below0.6=0.00% below0.7=0.00%, top_steps=none), diag_label1=(cand=62568, selected=0 (0.00%), scan_pred_mean=0.9113, scan_pred_range=[0.7642,0.9765], below0.5=0.00% below0.6=0.00% below0.7=0.00%, top_steps=none)
+[Metrics][baseline-valid-domain0][Epoch 2] {'auc': 0.7197822676237771, 'logloss': 1.016008555478522, 'count': 3369, 'pos': 2587.0, 'neg': 782.0}
+[Metrics][baseline-valid-domain1][Epoch 2] {'auc': 0.7418983525329035, 'logloss': 0.850143433499473, 'count': 6138, 'pos': 4831.0, 'neg': 1307.0}
+[Metrics][baseline-valid-domain2][Epoch 2] {'auc': 0.6422538053505535, 'logloss': 1.4406979304753809, 'count': 941, 'pos': 813.0, 'neg': 128.0}
+[Metrics][baseline-valid-overall][Epoch 2] {'auc': 0.7270673861487263, 'logloss': 0.9568156563119629, 'count': 10448, 'pos': 8231.0, 'neg': 2217.0}
+[Metrics][baseline-valid-domain_macro][Epoch 2] {'auc': 0.701311475169078, 'logloss': 1.1022833064844586, 'count': 10448}
+[Metrics][baseline-valid-domain_weighted][Epoch 2] {'auc': 0.7257924366679113, 'logloss': 0.9568156557048467, 'count': 10448}
+[AUCSummary][baseline-valid][Epoch 2] domain0=0.719782, domain1=0.741898, domain2=0.642254, domain_macro=0.701311, domain_weighted=0.725792, overall_global=0.727067
+[Metrics][baseline-test-domain0][Epoch 2] {'auc': 0.7064093591994329, 'logloss': 1.029345564958991, 'count': 5911, 'pos': 4614.0, 'neg': 1297.0}
+[Metrics][baseline-test-domain1][Epoch 2] {'auc': 0.7175685443518123, 'logloss': 0.9059836553310598, 'count': 8588, 'pos': 6852.0, 'neg': 1736.0}
+[Metrics][baseline-test-domain2][Epoch 2] {'auc': 0.6375931067692592, 'logloss': 1.4301580238364902, 'count': 1610, 'pos': 1401.0, 'neg': 209.0}
+[Metrics][baseline-test-overall][Epoch 2] {'auc': 0.7076730942633473, 'logloss': 1.003637947034158, 'count': 16109, 'pos': 12867.0, 'neg': 3242.0}
+[Metrics][baseline-test-domain_macro][Epoch 2] {'auc': 0.6871903367735014, 'logloss': 1.1218290813755136, 'count': 16109}
+[Metrics][baseline-test-domain_weighted][Epoch 2] {'auc': 0.7054807426295685, 'logloss': 1.003637946789527, 'count': 16109}
+[AUCSummary][baseline-test][Epoch 2] domain0=0.706409, domain1=0.717569, domain2=0.637593, domain_macro=0.687190, domain_weighted=0.705481, overall_global=0.707673
+[Metrics][augment-valid-domain0][Epoch 2] {'auc': 0.7496987198435616, 'logloss': 0.5302938633515455, 'count': 3369, 'pos': 2587.0, 'neg': 782.0}
+[Metrics][augment-valid-domain1][Epoch 2] {'auc': 0.7759158564847626, 'logloss': 0.488252618546137, 'count': 6138, 'pos': 4831.0, 'neg': 1307.0}
+[Metrics][augment-valid-domain2][Epoch 2] {'auc': 0.6392796740467405, 'logloss': 0.39675001078526945, 'count': 941, 'pos': 813.0, 'neg': 128.0}
+[Metrics][augment-valid-overall][Epoch 2] {'auc': 0.7233079866224078, 'logloss': 0.49356779868135847, 'count': 10448, 'pos': 8231.0, 'neg': 2217.0}
+[Metrics][augment-valid-domain_macro][Epoch 2] {'auc': 0.7216314167916882, 'logloss': 0.47176549756098396, 'count': 10448}
+[Metrics][augment-valid-domain_weighted][Epoch 2] {'auc': 0.7551558851009202, 'logloss': 0.4935677984701841, 'count': 10448}
+[AUCSummary][augment-valid][Epoch 2] domain0=0.749699, domain1=0.775916, domain2=0.639280, domain_macro=0.721631, domain_weighted=0.755156, overall_global=0.723308
+[Metrics][augment-test-domain0][Epoch 2] {'auc': 0.7366419254997778, 'logloss': 0.5266023904608382, 'count': 5911, 'pos': 4614.0, 'neg': 1297.0}
+[Metrics][augment-test-domain1][Epoch 2] {'auc': 0.7447587959114497, 'logloss': 0.477176535974237, 'count': 8588, 'pos': 6852.0, 'neg': 1736.0}
+[Metrics][augment-test-domain2][Epoch 2] {'auc': 0.6478011263314993, 'logloss': 0.3869820054677078, 'count': 1610, 'pos': 1401.0, 'neg': 209.0}
+[Metrics][augment-test-overall][Epoch 2] {'auc': 0.6983326115274061, 'logloss': 0.4862983332578955, 'count': 16109, 'pos': 12867.0, 'neg': 3242.0}
+[Metrics][augment-test-domain_macro][Epoch 2] {'auc': 0.7097339492475756, 'logloss': 0.4635869773009276, 'count': 16109}
+[Metrics][augment-test-domain_weighted][Epoch 2] {'auc': 0.7320900598615948, 'logloss': 0.4862983332152071, 'count': 16109}
+[AUCSummary][augment-test][Epoch 2] domain0=0.736642, domain1=0.744759, domain2=0.647801, domain_macro=0.709734, domain_weighted=0.732090, overall_global=0.698333
+[Stage4][Epoch 2] new best augment domain0 valid auc=0.749699
+[Stage4][Epoch 2] new best augment domain1 valid auc=0.775916
+[Stage4][Epoch 2] new best baseline domain2 valid auc=0.642254
+[Stage4][Epoch 2] new best augment domain2 valid auc=0.639280
+[Stage4][Epoch 2] new best augment overall valid auc=0.723308, test={'domain0': {'auc': 0.7366419254997778, 'logloss': 0.5266023904608382, 'count': 5911, 'pos': 4614.0, 'neg': 1297.0}, 'domain1': {'auc': 0.7447587959114497, 'logloss': 0.477176535974237, 'count': 8588, 'pos': 6852.0, 'neg': 1736.0}, 'domain2': {'auc': 0.6478011263314993, 'logloss': 0.3869820054677078, 'count': 1610, 'pos': 1401.0, 'neg': 209.0}, 'overall': {'auc': 0.6983326115274061, 'logloss': 0.4862983332578955, 'count': 16109, 'pos': 12867.0, 'neg': 3242.0}, 'domain_macro': {'auc': 0.7097339492475756, 'logloss': 0.4635869773009276, 'count': 16109}, 'domain_weighted': {'auc': 0.7320900598615948, 'logloss': 0.4862983332152071, 'count': 16109}}
+[Stage4][Epoch 3] baseline_loss=0.089204, augment_loss=0.348004
+[Stage4][Epoch 3][AugStats] domain0: source_candidates=57690 (label0=10449, label1=47241), transferred=2988 (label0=539, label1=2449), transfer_rate=5.1794%, target_true=83538, target_fake=1536, augment_total=88062, transferred_share_in_aug=3.3931%, num_batches=3, diag_label0=(cand=10449, selected=539 (5.16%), scan_pred_mean=0.7142, scan_pred_range=[0.3437,0.8833], below0.5=0.27% below0.6=9.77% below0.7=41.21%, top_steps=30:529,45:2,44:2,31:1,37:1), diag_label1=(cand=47241, selected=2449 (5.18%), scan_pred_mean=0.7244, scan_pred_range=[0.3077,0.9050], below0.5=0.27% below0.6=8.84% below0.7=36.43%, top_steps=30:2381,47:8,48:8,49:7,40:5) | domain1: source_candidates=35556 (label0=6613, label1=28943), transferred=33037 (label0=6271, label1=26766), transfer_rate=92.9154%, target_true=99960, target_fake=1024, augment_total=134021, transferred_share_in_aug=24.6506%, num_batches=2, diag_label0=(cand=6613, selected=6271 (94.83%), scan_pred_mean=0.4795, scan_pred_range=[0.1271,0.7778], below0.5=39.62% below0.6=96.13% below0.7=99.60%, top_steps=30:5960,33:33,32:25,36:22,31:21), diag_label1=(cand=28943, selected=26766 (92.48%), scan_pred_mean=0.4956, scan_pred_range=[0.1177,0.8795], below0.5=30.52% below0.6=95.46% below0.7=99.16%, top_steps=30:24688,32:183,31:153,33:152,35:148) | domain2: source_candidates=77826 (label0=15258, label1=62568), transferred=0 (label0=0, label1=0), transfer_rate=0.0000%, target_true=30840, target_fake=2048, augment_total=32888, transferred_share_in_aug=0.0000%, num_batches=4, diag_label0=(cand=15258, selected=0 (0.00%), scan_pred_mean=0.9091, scan_pred_range=[0.7647,0.9714], below0.5=0.00% below0.6=0.00% below0.7=0.00%, top_steps=none), diag_label1=(cand=62568, selected=0 (0.00%), scan_pred_mean=0.9112, scan_pred_range=[0.7638,0.9734], below0.5=0.00% below0.6=0.00% below0.7=0.00%, top_steps=none)
+[Metrics][baseline-valid-domain0][Epoch 3] {'auc': 0.7123241626191156, 'logloss': 1.2772341065175685, 'count': 3369, 'pos': 2587.0, 'neg': 782.0}
+[Metrics][baseline-valid-domain1][Epoch 3] {'auc': 0.7640820561291468, 'logloss': 1.0995295087037529, 'count': 6138, 'pos': 4831.0, 'neg': 1307.0}
+[Metrics][baseline-valid-domain2][Epoch 3] {'auc': 0.6150541974169741, 'logloss': 1.9853553793534409, 'count': 941, 'pos': 813.0, 'neg': 128.0}
+[Metrics][baseline-valid-overall][Epoch 3] {'auc': 0.7388151671675673, 'logloss': 1.236613057923203, 'count': 10448, 'pos': 8231.0, 'neg': 2217.0}
+[Metrics][baseline-valid-domain_macro][Epoch 3] {'auc': 0.6971534720550788, 'logloss': 1.4540396648582543, 'count': 10448}
+[Metrics][baseline-valid-domain_weighted][Epoch 3] {'auc': 0.7339703066762898, 'logloss': 1.236613059078571, 'count': 10448}
+[AUCSummary][baseline-valid][Epoch 3] domain0=0.712324, domain1=0.764082, domain2=0.615054, domain_macro=0.697153, domain_weighted=0.733970, overall_global=0.738815
+[Metrics][baseline-test-domain0][Epoch 3] {'auc': 0.6980370325438419, 'logloss': 1.3158015405668102, 'count': 5911, 'pos': 4614.0, 'neg': 1297.0}
+[Metrics][baseline-test-domain1][Epoch 3] {'auc': 0.7357557398559673, 'logloss': 1.2569427605951353, 'count': 8588, 'pos': 6852.0, 'neg': 1736.0}
+[Metrics][baseline-test-domain2][Epoch 3] {'auc': 0.6242635984549656, 'logloss': 1.9408890955503937, 'count': 1610, 'pos': 1401.0, 'neg': 209.0}
+[Metrics][baseline-test-overall][Epoch 3] {'auc': 0.7175368323588833, 'logloss': 1.3468967055808123, 'count': 16109, 'pos': 12867.0, 'neg': 3242.0}
+[Metrics][baseline-test-domain_macro][Epoch 3] {'auc': 0.686018790284925, 'logloss': 1.5045444655707796, 'count': 16109}
+[Metrics][baseline-test-domain_weighted][Epoch 3] {'auc': 0.7107723376225831, 'logloss': 1.346896689932185, 'count': 16109}
+[AUCSummary][baseline-test][Epoch 3] domain0=0.698037, domain1=0.735756, domain2=0.624264, domain_macro=0.686019, domain_weighted=0.710772, overall_global=0.717537
+[Metrics][augment-valid-domain0][Epoch 3] {'auc': 0.7480736853656439, 'logloss': 0.5740026886955598, 'count': 3369, 'pos': 2587.0, 'neg': 782.0}
+[Metrics][augment-valid-domain1][Epoch 3] {'auc': 0.7778363150381915, 'logloss': 0.5215887001027448, 'count': 6138, 'pos': 4831.0, 'neg': 1307.0}
+[Metrics][augment-valid-domain2][Epoch 3] {'auc': 0.6452375461254612, 'logloss': 0.38446526376459456, 'count': 941, 'pos': 813.0, 'neg': 128.0}
+[Metrics][augment-valid-overall][Epoch 3] {'auc': 0.7398130778024505, 'logloss': 0.5261397691662928, 'count': 10448, 'pos': 8231.0, 'neg': 2217.0}
+[Metrics][augment-valid-domain_macro][Epoch 3] {'auc': 0.7237158488430988, 'logloss': 0.49335221752096636, 'count': 10448}
+[Metrics][augment-valid-domain_weighted][Epoch 3] {'auc': 0.7562967150273098, 'logloss': 0.5261397695873345, 'count': 10448}
+[AUCSummary][augment-valid][Epoch 3] domain0=0.748074, domain1=0.777836, domain2=0.645238, domain_macro=0.723716, domain_weighted=0.756297, overall_global=0.739813
+[Metrics][augment-test-domain0][Epoch 3] {'auc': 0.7374479434552544, 'logloss': 0.5684992669236453, 'count': 5911, 'pos': 4614.0, 'neg': 1297.0}
+[Metrics][augment-test-domain1][Epoch 3] {'auc': 0.7472162421547343, 'logloss': 0.5117786523027501, 'count': 8588, 'pos': 6852.0, 'neg': 1736.0}
+[Metrics][augment-test-domain2][Epoch 3] {'auc': 0.6538289465146221, 'logloss': 0.3702504430903896, 'count': 1610, 'pos': 1401.0, 'neg': 209.0}
+[Metrics][augment-test-overall][Epoch 3] {'auc': 0.7154675554828076, 'logloss': 0.518446673134637, 'count': 16109, 'pos': 12867.0, 'neg': 3242.0}
+[Metrics][augment-test-domain_macro][Epoch 3] {'auc': 0.712831044041537, 'logloss': 0.48350945410559504, 'count': 16109}
+[Metrics][augment-test-domain_weighted][Epoch 3] {'auc': 0.7342983726660506, 'logloss': 0.5184466724276624, 'count': 16109}
+[AUCSummary][augment-test][Epoch 3] domain0=0.737448, domain1=0.747216, domain2=0.653829, domain_macro=0.712831, domain_weighted=0.734298, overall_global=0.715468
+[Stage4][Epoch 3] new best baseline domain1 valid auc=0.764082
+[Stage4][Epoch 3] new best augment domain1 valid auc=0.777836
+[Stage4][Epoch 3] new best augment domain2 valid auc=0.645238
+[Stage4][Epoch 3] new best baseline overall valid auc=0.738815, test={'domain0': {'auc': 0.6980370325438419, 'logloss': 1.3158015405668102, 'count': 5911, 'pos': 4614.0, 'neg': 1297.0}, 'domain1': {'auc': 0.7357557398559673, 'logloss': 1.2569427605951353, 'count': 8588, 'pos': 6852.0, 'neg': 1736.0}, 'domain2': {'auc': 0.6242635984549656, 'logloss': 1.9408890955503937, 'count': 1610, 'pos': 1401.0, 'neg': 209.0}, 'overall': {'auc': 0.7175368323588833, 'logloss': 1.3468967055808123, 'count': 16109, 'pos': 12867.0, 'neg': 3242.0}, 'domain_macro': {'auc': 0.686018790284925, 'logloss': 1.5045444655707796, 'count': 16109}, 'domain_weighted': {'auc': 0.7107723376225831, 'logloss': 1.346896689932185, 'count': 16109}}
+[Stage4][Epoch 3] new best augment overall valid auc=0.739813, test={'domain0': {'auc': 0.7374479434552544, 'logloss': 0.5684992669236453, 'count': 5911, 'pos': 4614.0, 'neg': 1297.0}, 'domain1': {'auc': 0.7472162421547343, 'logloss': 0.5117786523027501, 'count': 8588, 'pos': 6852.0, 'neg': 1736.0}, 'domain2': {'auc': 0.6538289465146221, 'logloss': 0.3702504430903896, 'count': 1610, 'pos': 1401.0, 'neg': 209.0}, 'overall': {'auc': 0.7154675554828076, 'logloss': 0.518446673134637, 'count': 16109, 'pos': 12867.0, 'neg': 3242.0}, 'domain_macro': {'auc': 0.712831044041537, 'logloss': 0.48350945410559504, 'count': 16109}, 'domain_weighted': {'auc': 0.7342983726660506, 'logloss': 0.5184466724276624, 'count': 16109}}
+[Stage4][Epoch 4] baseline_loss=0.087930, augment_loss=0.308799
+[Stage4][Epoch 4][AugStats] domain0: source_candidates=57690 (label0=10449, label1=47241), transferred=2966 (label0=555, label1=2411), transfer_rate=5.1413%, target_true=83538, target_fake=1536, augment_total=88040, transferred_share_in_aug=3.3689%, num_batches=3, diag_label0=(cand=10449, selected=555 (5.31%), scan_pred_mean=0.7167, scan_pred_range=[0.3068,0.9008], below0.5=0.28% below0.6=9.05% below0.7=39.68%, top_steps=30:550,33:1,44:1,48:1,41:1), diag_label1=(cand=47241, selected=2411 (5.10%), scan_pred_mean=0.7246, scan_pred_range=[0.2995,0.8980], below0.5=0.27% below0.6=8.53% below0.7=36.34%, top_steps=30:2370,39:5,44:5,45:5,41:4) | domain1: source_candidates=35556 (label0=6613, label1=28943), transferred=33014 (label0=6238, label1=26776), transfer_rate=92.8507%, target_true=99960, target_fake=1024, augment_total=133998, transferred_share_in_aug=24.6377%, num_batches=2, diag_label0=(cand=6613, selected=6238 (94.33%), scan_pred_mean=0.4820, scan_pred_range=[0.1399,0.8299], below0.5=37.96% below0.6=96.27% below0.7=99.36%, top_steps=30:5912,36:33,32:29,31:25,35:24), diag_label1=(cand=28943, selected=26776 (92.51%), scan_pred_mean=0.4956, scan_pred_range=[0.1084,0.8406], below0.5=30.73% below0.6=95.10% below0.7=99.27%, top_steps=30:24800,31:161,32:156,33:136,35:130) | domain2: source_candidates=77826 (label0=15258, label1=62568), transferred=0 (label0=0, label1=0), transfer_rate=0.0000%, target_true=30840, target_fake=2048, augment_total=32888, transferred_share_in_aug=0.0000%, num_batches=4, diag_label0=(cand=15258, selected=0 (0.00%), scan_pred_mean=0.9082, scan_pred_range=[0.7786,0.9715], below0.5=0.00% below0.6=0.00% below0.7=0.00%, top_steps=none), diag_label1=(cand=62568, selected=0 (0.00%), scan_pred_mean=0.9110, scan_pred_range=[0.7648,0.9731], below0.5=0.00% below0.6=0.00% below0.7=0.00%, top_steps=none)
+[Metrics][baseline-valid-domain0][Epoch 4] {'auc': 0.7258790509699787, 'logloss': 1.7014660192479925, 'count': 3369, 'pos': 2587.0, 'neg': 782.0}
+[Metrics][baseline-valid-domain1][Epoch 4] {'auc': 0.7473519258512314, 'logloss': 1.0098169039580314, 'count': 6138, 'pos': 4831.0, 'neg': 1307.0}
+[Metrics][baseline-valid-domain2][Epoch 4] {'auc': 0.6331536362238622, 'logloss': 1.5467392575989531, 'count': 941, 'pos': 813.0, 'neg': 128.0}
+[Metrics][baseline-valid-overall][Epoch 4] {'auc': 0.7260044003420186, 'logloss': 1.281199925409935, 'count': 10448, 'pos': 8231.0, 'neg': 2217.0}
+[Metrics][baseline-valid-domain_macro][Epoch 4] {'auc': 0.7021282043483574, 'logloss': 1.4193407269349922, 'count': 10448}
+[Metrics][baseline-valid-domain_weighted][Epoch 4] {'auc': 0.730142631630874, 'logloss': 1.2811999250326853, 'count': 10448}
+[AUCSummary][baseline-valid][Epoch 4] domain0=0.725879, domain1=0.747352, domain2=0.633154, domain_macro=0.702128, domain_weighted=0.730143, overall_global=0.726004
+[Metrics][baseline-test-domain0][Epoch 4] {'auc': 0.7116417500423604, 'logloss': 1.73772790716799, 'count': 5911, 'pos': 4614.0, 'neg': 1297.0}
+[Metrics][baseline-test-domain1][Epoch 4] {'auc': 0.7186123799839126, 'logloss': 1.096176682288017, 'count': 8588, 'pos': 6852.0, 'neg': 1736.0}
+[Metrics][baseline-test-domain2][Epoch 4] {'auc': 0.6525431253820749, 'logloss': 1.4590589755257677, 'count': 1610, 'pos': 1401.0, 'neg': 209.0}
+[Metrics][baseline-test-overall][Epoch 4] {'auc': 0.7042757400284705, 'logloss': 1.3678539562540115, 'count': 16109, 'pos': 12867.0, 'neg': 3242.0}
+[Metrics][baseline-test-domain_macro][Epoch 4] {'auc': 0.6942657518027827, 'logloss': 1.4309878549939248, 'count': 16109}
+[Metrics][baseline-test-domain_weighted][Epoch 4] {'auc': 0.7094513585987569, 'logloss': 1.3678539920141513, 'count': 16109}
+[AUCSummary][baseline-test][Epoch 4] domain0=0.711642, domain1=0.718612, domain2=0.652543, domain_macro=0.694266, domain_weighted=0.709451, overall_global=0.704276
+[Metrics][augment-valid-domain0][Epoch 4] {'auc': 0.7466065819951617, 'logloss': 0.6810673654055565, 'count': 3369, 'pos': 2587.0, 'neg': 782.0}
+[Metrics][augment-valid-domain1][Epoch 4] {'auc': 0.7786062564250869, 'logloss': 0.5891286660376371, 'count': 6138, 'pos': 4831.0, 'neg': 1307.0}
+[Metrics][augment-valid-domain2][Epoch 4] {'auc': 0.6465924815498155, 'logloss': 0.4243565941488109, 'count': 941, 'pos': 813.0, 'neg': 128.0}
+[Metrics][augment-valid-overall][Epoch 4] {'auc': 0.7452514441619131, 'logloss': 0.6039344628349045, 'count': 10448, 'pos': 8231.0, 'neg': 2217.0}
+[Metrics][augment-valid-domain_macro][Epoch 4] {'auc': 0.723935106656688, 'logloss': 0.5648508751973349, 'count': 10448}
+[Metrics][augment-valid-domain_weighted][Epoch 4] {'auc': 0.7563979997910854, 'logloss': 0.6039344622209386, 'count': 10448}
+[AUCSummary][augment-valid][Epoch 4] domain0=0.746607, domain1=0.778606, domain2=0.646592, domain_macro=0.723935, domain_weighted=0.756398, overall_global=0.745251
+[Metrics][augment-test-domain0][Epoch 4] {'auc': 0.7364962958432635, 'logloss': 0.67145417339892, 'count': 5911, 'pos': 4614.0, 'neg': 1297.0}
+[Metrics][augment-test-domain1][Epoch 4] {'auc': 0.7485049270824087, 'logloss': 0.5785961515930501, 'count': 8588, 'pos': 6852.0, 'neg': 1736.0}
+[Metrics][augment-test-domain2][Epoch 4] {'auc': 0.6581457537165866, 'logloss': 0.4021011983317942, 'count': 1610, 'pos': 1401.0, 'neg': 209.0}
+[Metrics][augment-test-overall][Epoch 4] {'auc': 0.7220279467145652, 'logloss': 0.5950296252030502, 'count': 16109, 'pos': 12867.0, 'neg': 3242.0}
+[Metrics][augment-test-domain_macro][Epoch 4] {'auc': 0.7143823255474196, 'logloss': 0.5507171744412548, 'count': 16109}
+[Metrics][augment-test-domain_weighted][Epoch 4] {'auc': 0.7350676380903196, 'logloss': 0.595029629285264, 'count': 16109}
+[AUCSummary][augment-test][Epoch 4] domain0=0.736496, domain1=0.748505, domain2=0.658146, domain_macro=0.714382, domain_weighted=0.735068, overall_global=0.722028
+[Stage4][Epoch 4] new best augment domain1 valid auc=0.778606
+[Stage4][Epoch 4] new best augment domain2 valid auc=0.646592
+[Stage4][Epoch 4] new best augment overall valid auc=0.745251, test={'domain0': {'auc': 0.7364962958432635, 'logloss': 0.67145417339892, 'count': 5911, 'pos': 4614.0, 'neg': 1297.0}, 'domain1': {'auc': 0.7485049270824087, 'logloss': 0.5785961515930501, 'count': 8588, 'pos': 6852.0, 'neg': 1736.0}, 'domain2': {'auc': 0.6581457537165866, 'logloss': 0.4021011983317942, 'count': 1610, 'pos': 1401.0, 'neg': 209.0}, 'overall': {'auc': 0.7220279467145652, 'logloss': 0.5950296252030502, 'count': 16109, 'pos': 12867.0, 'neg': 3242.0}, 'domain_macro': {'auc': 0.7143823255474196, 'logloss': 0.5507171744412548, 'count': 16109}, 'domain_weighted': {'auc': 0.7350676380903196, 'logloss': 0.595029629285264, 'count': 16109}}
+[Stage4][Epoch 5] baseline_loss=0.074937, augment_loss=0.287686
+[Stage4][Epoch 5][AugStats] domain0: source_candidates=57690 (label0=10449, label1=47241), transferred=2948 (label0=572, label1=2376), transfer_rate=5.1101%, target_true=83538, target_fake=1536, augment_total=88022, transferred_share_in_aug=3.3492%, num_batches=3, diag_label0=(cand=10449, selected=572 (5.47%), scan_pred_mean=0.7148, scan_pred_range=[0.3478,0.9006], below0.5=0.29% below0.6=9.69% below0.7=40.68%, top_steps=30:553,47:4,41:3,45:3,39:2), diag_label1=(cand=47241, selected=2376 (5.03%), scan_pred_mean=0.7242, scan_pred_range=[0.3202,0.9034], below0.5=0.26% below0.6=8.80% below0.7=36.56%, top_steps=30:2329,49:8,44:5,41:4,47:4) | domain1: source_candidates=35556 (label0=6613, label1=28943), transferred=32939 (label0=6232, label1=26707), transfer_rate=92.6398%, target_true=99960, target_fake=1024, augment_total=133923, transferred_share_in_aug=24.5955%, num_batches=2, diag_label0=(cand=6613, selected=6232 (94.24%), scan_pred_mean=0.4819, scan_pred_range=[0.1251,0.8094], below0.5=37.79% below0.6=96.18% below0.7=99.44%, top_steps=30:5911,32:33,33:28,34:27,42:23), diag_label1=(cand=28943, selected=26707 (92.27%), scan_pred_mean=0.4964, scan_pred_range=[0.1214,0.8240], below0.5=30.14% below0.6=95.21% below0.7=99.27%, top_steps=30:24635,32:166,31:164,33:162,35:159) | domain2: source_candidates=77826 (label0=15258, label1=62568), transferred=0 (label0=0, label1=0), transfer_rate=0.0000%, target_true=30840, target_fake=2048, augment_total=32888, transferred_share_in_aug=0.0000%, num_batches=4, diag_label0=(cand=15258, selected=0 (0.00%), scan_pred_mean=0.9087, scan_pred_range=[0.7761,0.9741], below0.5=0.00% below0.6=0.00% below0.7=0.00%, top_steps=none), diag_label1=(cand=62568, selected=0 (0.00%), scan_pred_mean=0.9113, scan_pred_range=[0.7649,0.9732], below0.5=0.00% below0.6=0.00% below0.7=0.00%, top_steps=none)
+[Metrics][baseline-valid-domain0][Epoch 5] {'auc': 0.7170064862973138, 'logloss': 1.9227265664542554, 'count': 3369, 'pos': 2587.0, 'neg': 782.0}
+[Metrics][baseline-valid-domain1][Epoch 5] {'auc': 0.7283323226351365, 'logloss': 1.1020336142641107, 'count': 6138, 'pos': 4831.0, 'neg': 1307.0}
+[Metrics][baseline-valid-domain2][Epoch 5] {'auc': 0.6227513837638375, 'logloss': 1.615964906266113, 'count': 941, 'pos': 813.0, 'neg': 128.0}
+[Metrics][baseline-valid-overall][Epoch 5] {'auc': 0.7112078680732548, 'logloss': 1.4129566542771714, 'count': 10448, 'pos': 8231.0, 'neg': 2217.0}
+[Metrics][baseline-valid-domain_macro][Epoch 5] {'auc': 0.6893633975654293, 'logloss': 1.5469083623281596, 'count': 10448}
+[Metrics][baseline-valid-domain_weighted][Epoch 5] {'auc': 0.7151711045934044, 'logloss': 1.4129566523290495, 'count': 10448}
+[AUCSummary][baseline-valid][Epoch 5] domain0=0.717006, domain1=0.728332, domain2=0.622751, domain_macro=0.689363, domain_weighted=0.715171, overall_global=0.711208
+[Metrics][baseline-test-domain0][Epoch 5] {'auc': 0.7064779546945553, 'logloss': 1.984675527177731, 'count': 5911, 'pos': 4614.0, 'neg': 1297.0}
+[Metrics][baseline-test-domain1][Epoch 5] {'auc': 0.70203038703759, 'logloss': 1.1986797800397653, 'count': 8588, 'pos': 6852.0, 'neg': 1736.0}
+[Metrics][baseline-test-domain2][Epoch 5] {'auc': 0.6123855482584211, 'logloss': 1.6624330168785815, 'count': 1610, 'pos': 1401.0, 'neg': 209.0}
+[Metrics][baseline-test-overall][Epoch 5] {'auc': 0.692315648344974, 'logloss': 1.5334407053460126, 'count': 16109, 'pos': 12867.0, 'neg': 3242.0}
+[Metrics][baseline-test-domain_macro][Epoch 5] {'auc': 0.6736312966635222, 'logloss': 1.6152627746986925, 'count': 16109}
+[Metrics][baseline-test-domain_weighted][Epoch 5] {'auc': 0.6947028919718417, 'logloss': 1.5334406945995152, 'count': 16109}
+[AUCSummary][baseline-test][Epoch 5] domain0=0.706478, domain1=0.702030, domain2=0.612386, domain_macro=0.673631, domain_weighted=0.694703, overall_global=0.692316
+[Metrics][augment-valid-domain0][Epoch 5] {'auc': 0.7466794922873269, 'logloss': 0.6810430991755273, 'count': 3369, 'pos': 2587.0, 'neg': 782.0}
+[Metrics][augment-valid-domain1][Epoch 5] {'auc': 0.7777049427497147, 'logloss': 0.6764508925008272, 'count': 6138, 'pos': 4831.0, 'neg': 1307.0}
+[Metrics][augment-valid-domain2][Epoch 5] {'auc': 0.6474237007995081, 'logloss': 0.4803173797122617, 'count': 941, 'pos': 813.0, 'neg': 128.0}
+[Metrics][augment-valid-overall][Epoch 5] {'auc': 0.753945076116579, 'logloss': 0.6602668857547892, 'count': 10448, 'pos': 8231.0, 'neg': 2217.0}
+[Metrics][augment-valid-domain_macro][Epoch 5] {'auc': 0.7239360452788498, 'logloss': 0.6126037904628722, 'count': 10448}
+[Metrics][augment-valid-domain_weighted][Epoch 5] {'auc': 0.7559668693114558, 'logloss': 0.660266886830175, 'count': 10448}
+[AUCSummary][augment-valid][Epoch 5] domain0=0.746679, domain1=0.777705, domain2=0.647424, domain_macro=0.723936, domain_weighted=0.755967, overall_global=0.753945
+[Metrics][augment-test-domain0][Epoch 5] {'auc': 0.7375772806372881, 'logloss': 0.6684356150574333, 'count': 5911, 'pos': 4614.0, 'neg': 1297.0}
+[Metrics][augment-test-domain1][Epoch 5] {'auc': 0.7489348530214865, 'logloss': 0.6608704949096985, 'count': 8588, 'pos': 6852.0, 'neg': 1736.0}
+[Metrics][augment-test-domain2][Epoch 5] {'auc': 0.6596860069191862, 'logloss': 0.4507962596566004, 'count': 1610, 'pos': 1401.0, 'neg': 209.0}
+[Metrics][augment-test-overall][Epoch 5] {'auc': 0.7342366551124979, 'logloss': 0.6426507369374358, 'count': 16109, 'pos': 12867.0, 'neg': 3242.0}
+[Metrics][augment-test-domain_macro][Epoch 5] {'auc': 0.7153993801926536, 'logloss': 0.593367456541244, 'count': 16109}
+[Metrics][augment-test-domain_weighted][Epoch 5] {'auc': 0.7358474327851156, 'logloss': 0.6426507361683598, 'count': 16109}
+[AUCSummary][augment-test][Epoch 5] domain0=0.737577, domain1=0.748935, domain2=0.659686, domain_macro=0.715399, domain_weighted=0.735847, overall_global=0.734237
+[Stage4][Epoch 5] new best augment domain2 valid auc=0.647424
+[Stage4][Epoch 5] new best augment overall valid auc=0.753945, test={'domain0': {'auc': 0.7375772806372881, 'logloss': 0.6684356150574333, 'count': 5911, 'pos': 4614.0, 'neg': 1297.0}, 'domain1': {'auc': 0.7489348530214865, 'logloss': 0.6608704949096985, 'count': 8588, 'pos': 6852.0, 'neg': 1736.0}, 'domain2': {'auc': 0.6596860069191862, 'logloss': 0.4507962596566004, 'count': 1610, 'pos': 1401.0, 'neg': 209.0}, 'overall': {'auc': 0.7342366551124979, 'logloss': 0.6426507369374358, 'count': 16109, 'pos': 12867.0, 'neg': 3242.0}, 'domain_macro': {'auc': 0.7153993801926536, 'logloss': 0.593367456541244, 'count': 16109}, 'domain_weighted': {'auc': 0.7358474327851156, 'logloss': 0.6426507361683598, 'count': 16109}}
+[Stage4][Epoch 6] baseline_loss=0.069253, augment_loss=0.261173
+[Stage4][Epoch 6][AugStats] domain0: source_candidates=57690 (label0=10449, label1=47241), transferred=3000 (label0=568, label1=2432), transfer_rate=5.2002%, target_true=83538, target_fake=1536, augment_total=88074, transferred_share_in_aug=3.4062%, num_batches=3, diag_label0=(cand=10449, selected=568 (5.44%), scan_pred_mean=0.7138, scan_pred_range=[0.3380,0.8891], below0.5=0.29% below0.6=9.93% below0.7=41.30%, top_steps=30:557,32:2,45:2,33:1,42:1), diag_label1=(cand=47241, selected=2432 (5.15%), scan_pred_mean=0.7242, scan_pred_range=[0.3242,0.8950], below0.5=0.27% below0.6=8.68% below0.7=36.27%, top_steps=30:2381,37:6,43:6,49:6,42:5) | domain1: source_candidates=35556 (label0=6613, label1=28943), transferred=33105 (label0=6275, label1=26830), transfer_rate=93.1066%, target_true=99960, target_fake=1024, augment_total=134089, transferred_share_in_aug=24.6888%, num_batches=2, diag_label0=(cand=6613, selected=6275 (94.89%), scan_pred_mean=0.4768, scan_pred_range=[0.1488,0.6893], below0.5=39.54% below0.6=97.80% below0.7=100.00%, top_steps=30:5935,31:36,33:34,38:25,37:23), diag_label1=(cand=28943, selected=26830 (92.70%), scan_pred_mean=0.4942, scan_pred_range=[0.1061,0.8501], below0.5=31.13% below0.6=95.42% below0.7=99.45%, top_steps=30:24766,31:191,32:157,34:157,33:151) | domain2: source_candidates=77826 (label0=15258, label1=62568), transferred=0 (label0=0, label1=0), transfer_rate=0.0000%, target_true=30840, target_fake=2048, augment_total=32888, transferred_share_in_aug=0.0000%, num_batches=4, diag_label0=(cand=15258, selected=0 (0.00%), scan_pred_mean=0.9081, scan_pred_range=[0.7762,0.9730], below0.5=0.00% below0.6=0.00% below0.7=0.00%, top_steps=none), diag_label1=(cand=62568, selected=0 (0.00%), scan_pred_mean=0.9110, scan_pred_range=[0.7531,0.9742], below0.5=0.00% below0.6=0.00% below0.7=0.00%, top_steps=none)
+[Metrics][baseline-valid-domain0][Epoch 6] {'auc': 0.7127126879726193, 'logloss': 1.565119967985623, 'count': 3369, 'pos': 2587.0, 'neg': 782.0}
+[Metrics][baseline-valid-domain1][Epoch 6] {'auc': 0.7271454583435816, 'logloss': 1.2557721774475876, 'count': 6138, 'pos': 4831.0, 'neg': 1307.0}
+[Metrics][baseline-valid-domain2][Epoch 6] {'auc': 0.6411294972324724, 'logloss': 1.7290292197996513, 'count': 941, 'pos': 813.0, 'neg': 128.0}
+[Metrics][baseline-valid-overall][Epoch 6] {'auc': 0.7036623265500069, 'logloss': 1.3981465629553167, 'count': 10448, 'pos': 8231.0, 'neg': 2217.0}
+[Metrics][baseline-valid-domain_macro][Epoch 6] {'auc': 0.6936625478495578, 'logloss': 1.5166404550776207, 'count': 10448}
+[Metrics][baseline-valid-domain_weighted][Epoch 6] {'auc': 0.7147445181841897, 'logloss': 1.3981465632798937, 'count': 10448}
+[AUCSummary][baseline-valid][Epoch 6] domain0=0.712713, domain1=0.727145, domain2=0.641129, domain_macro=0.693663, domain_weighted=0.714745, overall_global=0.703662
+[Metrics][baseline-test-domain0][Epoch 6] {'auc': 0.688533005545457, 'logloss': 1.6601577066443345, 'count': 5911, 'pos': 4614.0, 'neg': 1297.0}
+[Metrics][baseline-test-domain1][Epoch 6] {'auc': 0.7026941913424315, 'logloss': 1.3398790743252733, 'count': 8588, 'pos': 6852.0, 'neg': 1736.0}
+[Metrics][baseline-test-domain2][Epoch 6] {'auc': 0.6323388283830074, 'logloss': 1.8242410426256852, 'count': 1610, 'pos': 1401.0, 'neg': 209.0}
+[Metrics][baseline-test-overall][Epoch 6] {'auc': 0.681098194516701, 'logloss': 1.5058105273075684, 'count': 16109, 'pos': 12867.0, 'neg': 3242.0}
+[Metrics][baseline-test-domain_macro][Epoch 6] {'auc': 0.674522008423632, 'logloss': 1.6080926078650977, 'count': 16109}
+[Metrics][baseline-test-domain_weighted][Epoch 6] {'auc': 0.6904663122927953, 'logloss': 1.5058105265942927, 'count': 16109}
+[AUCSummary][baseline-test][Epoch 6] domain0=0.688533, domain1=0.702694, domain2=0.632339, domain_macro=0.674522, domain_weighted=0.690466, overall_global=0.681098
+[Metrics][augment-valid-domain0][Epoch 6] {'auc': 0.7445490288349084, 'logloss': 0.7843424536209272, 'count': 3369, 'pos': 2587.0, 'neg': 782.0}
+[Metrics][augment-valid-domain1][Epoch 6] {'auc': 0.7761594376537528, 'logloss': 0.7262382313871715, 'count': 6138, 'pos': 4831.0, 'neg': 1307.0}
+[Metrics][augment-valid-domain2][Epoch 6] {'auc': 0.6463330258302583, 'logloss': 0.5473711429084952, 'count': 941, 'pos': 813.0, 'neg': 128.0}
+[Metrics][augment-valid-overall][Epoch 6] {'auc': 0.749271171775602, 'logloss': 0.7288644928640344, 'count': 10448, 'pos': 8231.0, 'neg': 2217.0}
+[Metrics][augment-valid-domain_macro][Epoch 6] {'auc': 0.7223471641063065, 'logloss': 0.6859839426388646, 'count': 10448}
+[Metrics][augment-valid-domain_weighted][Epoch 6] {'auc': 0.7542737063332517, 'logloss': 0.7288644942553844, 'count': 10448}
+[AUCSummary][augment-valid][Epoch 6] domain0=0.744549, domain1=0.776159, domain2=0.646333, domain_macro=0.722347, domain_weighted=0.754274, overall_global=0.749271
+[Metrics][augment-test-domain0][Epoch 6] {'auc': 0.7352666735512816, 'logloss': 0.7701460660151854, 'count': 5911, 'pos': 4614.0, 'neg': 1297.0}
+[Metrics][augment-test-domain1][Epoch 6] {'auc': 0.748615687235857, 'logloss': 0.7063668505347153, 'count': 8588, 'pos': 6852.0, 'neg': 1736.0}
+[Metrics][augment-test-domain2][Epoch 6] {'auc': 0.6609171849225947, 'logloss': 0.510864826174874, 'count': 1610, 'pos': 1401.0, 'neg': 209.0}
+[Metrics][augment-test-overall][Epoch 6] {'auc': 0.7300272032856242, 'logloss': 0.7102305739820555, 'count': 16109, 'pos': 12867.0, 'neg': 3242.0}
+[Metrics][augment-test-domain_macro][Epoch 6] {'auc': 0.7149331819032444, 'logloss': 0.6624592475749249, 'count': 16109}
+[Metrics][augment-test-domain_weighted][Epoch 6] {'auc': 0.7349524797981589, 'logloss': 0.7102305716524578, 'count': 16109}
+[AUCSummary][augment-test][Epoch 6] domain0=0.735267, domain1=0.748616, domain2=0.660917, domain_macro=0.714933, domain_weighted=0.734952, overall_global=0.730027
+[Stage4][Epoch 7] baseline_loss=0.065389, augment_loss=0.246925
+[Stage4][Epoch 7][AugStats] domain0: source_candidates=57690 (label0=10449, label1=47241), transferred=2939 (label0=548, label1=2391), transfer_rate=5.0945%, target_true=83538, target_fake=1536, augment_total=88013, transferred_share_in_aug=3.3393%, num_batches=3, diag_label0=(cand=10449, selected=548 (5.24%), scan_pred_mean=0.7176, scan_pred_range=[0.3424,0.8921], below0.5=0.28% below0.6=8.82% below0.7=39.86%, top_steps=30:536,42:2,47:2,48:2,49:2), diag_label1=(cand=47241, selected=2391 (5.06%), scan_pred_mean=0.7246, scan_pred_range=[0.3091,0.9024], below0.5=0.27% below0.6=8.75% below0.7=36.23%, top_steps=30:2324,45:9,42:8,48:8,41:7) | domain1: source_candidates=35556 (label0=6613, label1=28943), transferred=33004 (label0=6254, label1=26750), transfer_rate=92.8226%, target_true=99960, target_fake=1024, augment_total=133988, transferred_share_in_aug=24.6321%, num_batches=2, diag_label0=(cand=6613, selected=6254 (94.57%), scan_pred_mean=0.4797, scan_pred_range=[0.1285,0.8540], below0.5=38.83% below0.6=96.67% below0.7=99.36%, top_steps=30:5934,32:30,33:29,31:22,36:22), diag_label1=(cand=28943, selected=26750 (92.42%), scan_pred_mean=0.4949, scan_pred_range=[0.1361,0.8397], below0.5=30.60% below0.6=95.75% below0.7=99.33%, top_steps=30:24770,31:165,32:147,38:141,35:133) | domain2: source_candidates=77826 (label0=15258, label1=62568), transferred=0 (label0=0, label1=0), transfer_rate=0.0000%, target_true=30840, target_fake=2048, augment_total=32888, transferred_share_in_aug=0.0000%, num_batches=4, diag_label0=(cand=15258, selected=0 (0.00%), scan_pred_mean=0.9082, scan_pred_range=[0.7623,0.9692], below0.5=0.00% below0.6=0.00% below0.7=0.00%, top_steps=none), diag_label1=(cand=62568, selected=0 (0.00%), scan_pred_mean=0.9111, scan_pred_range=[0.7620,0.9739], below0.5=0.00% below0.6=0.00% below0.7=0.00%, top_steps=none)
+[Metrics][baseline-valid-domain0][Epoch 7] {'auc': 0.6962527569976579, 'logloss': 1.7066359146073868, 'count': 3369, 'pos': 2587.0, 'neg': 782.0}
+[Metrics][baseline-valid-domain1][Epoch 7] {'auc': 0.7466036026890221, 'logloss': 1.3117936244805721, 'count': 6138, 'pos': 4831.0, 'neg': 1307.0}
+[Metrics][baseline-valid-domain2][Epoch 7] {'auc': 0.6161016297662976, 'logloss': 2.6382783924471473, 'count': 941, 'pos': 813.0, 'neg': 128.0}
+[Metrics][baseline-valid-overall][Epoch 7] {'auc': 0.7206881835050798, 'logloss': 1.5585820868440057, 'count': 10448, 'pos': 8231.0, 'neg': 2217.0}
+[Metrics][baseline-valid-domain_macro][Epoch 7] {'auc': 0.6863193298176592, 'logloss': 1.885569310511702, 'count': 10448}
+[Metrics][baseline-valid-domain_weighted][Epoch 7] {'auc': 0.7186140969793657, 'logloss': 1.5585820856304367, 'count': 10448}
+[AUCSummary][baseline-valid][Epoch 7] domain0=0.696253, domain1=0.746604, domain2=0.616102, domain_macro=0.686319, domain_weighted=0.718614, overall_global=0.720688
+[Metrics][baseline-test-domain0][Epoch 7] {'auc': 0.6859262931796527, 'logloss': 1.7194414024757871, 'count': 5911, 'pos': 4614.0, 'neg': 1297.0}
+[Metrics][baseline-test-domain1][Epoch 7] {'auc': 0.7152484238851181, 'logloss': 1.4556965076645945, 'count': 8588, 'pos': 6852.0, 'neg': 1736.0}
+[Metrics][baseline-test-domain2][Epoch 7] {'auc': 0.6190656707956381, 'logloss': 2.555895158282727, 'count': 1610, 'pos': 1401.0, 'neg': 209.0}
+[Metrics][baseline-test-overall][Epoch 7] {'auc': 0.6994732854376385, 'logloss': 1.662432860566214, 'count': 16109, 'pos': 12867.0, 'neg': 3242.0}
+[Metrics][baseline-test-domain_macro][Epoch 7] {'auc': 0.6734134626201363, 'logloss': 1.9103443561410363, 'count': 16109}
+[Metrics][baseline-test-domain_weighted][Epoch 7] {'auc': 0.6948761259725184, 'logloss': 1.662432860059166, 'count': 16109}
+[AUCSummary][baseline-test][Epoch 7] domain0=0.685926, domain1=0.715248, domain2=0.619066, domain_macro=0.673413, domain_weighted=0.694876, overall_global=0.699473
+[Metrics][augment-valid-domain0][Epoch 7] {'auc': 0.6334984978008278, 'logloss': 0.7891220587848763, 'count': 3369, 'pos': 2587.0, 'neg': 782.0}
+[Metrics][augment-valid-domain1][Epoch 7] {'auc': 0.7720496785219533, 'logloss': 0.7911905025958738, 'count': 6138, 'pos': 4831.0, 'neg': 1307.0}
+[Metrics][augment-valid-domain2][Epoch 7] {'auc': 0.6482164821648216, 'logloss': 0.5730824585411991, 'count': 941, 'pos': 813.0, 'neg': 128.0}
+[Metrics][augment-valid-overall][Epoch 7] {'auc': 0.7166484812386498, 'logloss': 0.7708796046862241, 'count': 10448, 'pos': 8231.0, 'neg': 2217.0}
+[Metrics][augment-valid-domain_macro][Epoch 7] {'auc': 0.6845882194958676, 'logloss': 0.717798339973983, 'count': 10448}
+[Metrics][augment-valid-domain_weighted][Epoch 7] {'auc': 0.7162202407710407, 'logloss': 0.7708796051365802, 'count': 10448}
+[AUCSummary][augment-valid][Epoch 7] domain0=0.633498, domain1=0.772050, domain2=0.648216, domain_macro=0.684588, domain_weighted=0.716220, overall_global=0.716648
+[Metrics][augment-test-domain0][Epoch 7] {'auc': 0.6395918325741876, 'logloss': 0.7528857416430155, 'count': 5911, 'pos': 4614.0, 'neg': 1297.0}
+[Metrics][augment-test-domain1][Epoch 7] {'auc': 0.7459732484174959, 'logloss': 0.766260942754323, 'count': 8588, 'pos': 6852.0, 'neg': 1736.0}
+[Metrics][augment-test-domain2][Epoch 7] {'auc': 0.6608830329668828, 'logloss': 0.534628423422244, 'count': 1610, 'pos': 1401.0, 'neg': 209.0}
+[Metrics][augment-test-overall][Epoch 7] {'auc': 0.6977601889822642, 'logloss': 0.7382027745039451, 'count': 16109, 'pos': 12867.0, 'neg': 3242.0}
+[Metrics][augment-test-domain_macro][Epoch 7] {'auc': 0.6821493713195221, 'logloss': 0.6845917026065275, 'count': 16109}
+[Metrics][augment-test-domain_weighted][Epoch 7] {'auc': 0.6984336248576671, 'logloss': 0.7382027659653488, 'count': 16109}
+[AUCSummary][augment-test][Epoch 7] domain0=0.639592, domain1=0.745973, domain2=0.660883, domain_macro=0.682149, domain_weighted=0.698434, overall_global=0.697760
+[Stage4][Epoch 7] new best augment domain2 valid auc=0.648216
+[Stage4][Epoch 8] baseline_loss=0.059699, augment_loss=0.251512
+[Stage4][Epoch 8][AugStats] domain0: source_candidates=57690 (label0=10449, label1=47241), transferred=3006 (label0=563, label1=2443), transfer_rate=5.2106%, target_true=83538, target_fake=1536, augment_total=88080, transferred_share_in_aug=3.4128%, num_batches=3, diag_label0=(cand=10449, selected=563 (5.39%), scan_pred_mean=0.7165, scan_pred_range=[0.3349,0.8826], below0.5=0.28% below0.6=9.08% below0.7=39.83%, top_steps=30:541,40:6,48:4,35:2,43:2), diag_label1=(cand=47241, selected=2443 (5.17%), scan_pred_mean=0.7239, scan_pred_range=[0.3222,0.8911], below0.5=0.27% below0.6=8.95% below0.7=36.58%, top_steps=30:2386,47:8,48:8,44:6,42:5) | domain1: source_candidates=35556 (label0=6613, label1=28943), transferred=33039 (label0=6263, label1=26776), transfer_rate=92.9210%, target_true=99960, target_fake=1024, augment_total=134023, transferred_share_in_aug=24.6517%, num_batches=2, diag_label0=(cand=6613, selected=6263 (94.71%), scan_pred_mean=0.4786, scan_pred_range=[0.1477,0.7669], below0.5=39.55% below0.6=97.23% below0.7=99.84%, top_steps=30:5939,32:32,34:29,36:29,33:28), diag_label1=(cand=28943, selected=26776 (92.51%), scan_pred_mean=0.4951, scan_pred_range=[0.1179,0.8136], below0.5=30.93% below0.6=95.58% below0.7=99.28%, top_steps=30:24797,31:184,34:145,32:142,33:140) | domain2: source_candidates=77826 (label0=15258, label1=62568), transferred=0 (label0=0, label1=0), transfer_rate=0.0000%, target_true=30840, target_fake=2048, augment_total=32888, transferred_share_in_aug=0.0000%, num_batches=4, diag_label0=(cand=15258, selected=0 (0.00%), scan_pred_mean=0.9076, scan_pred_range=[0.7673,0.9715], below0.5=0.00% below0.6=0.00% below0.7=0.00%, top_steps=none), diag_label1=(cand=62568, selected=0 (0.00%), scan_pred_mean=0.9109, scan_pred_range=[0.7581,0.9717], below0.5=0.00% below0.6=0.00% below0.7=0.00%, top_steps=none)
+[Metrics][baseline-valid-domain0][Epoch 8] {'auc': 0.693619830413132, 'logloss': 1.488109115833606, 'count': 3369, 'pos': 2587.0, 'neg': 782.0}
+[Metrics][baseline-valid-domain1][Epoch 8] {'auc': 0.7399477234900779, 'logloss': 1.1748630539198934, 'count': 6138, 'pos': 4831.0, 'neg': 1307.0}
+[Metrics][baseline-valid-domain2][Epoch 8] {'auc': 0.620728590098401, 'logloss': 2.5797703452153415, 'count': 941, 'pos': 813.0, 'neg': 128.0}
+[Metrics][baseline-valid-overall][Epoch 8] {'auc': 0.7177013290185892, 'logloss': 1.402403611430345, 'count': 10448, 'pos': 8231.0, 'neg': 2217.0}
+[Metrics][baseline-valid-domain_macro][Epoch 8] {'auc': 0.6847653813338703, 'logloss': 1.747580838322947, 'count': 10448}
+[Metrics][baseline-valid-domain_weighted][Epoch 8] {'auc': 0.7142716250695382, 'logloss': 1.402403611318086, 'count': 10448}
+[AUCSummary][baseline-valid][Epoch 8] domain0=0.693620, domain1=0.739948, domain2=0.620729, domain_macro=0.684765, domain_weighted=0.714272, overall_global=0.717701
+[Metrics][baseline-test-domain0][Epoch 8] {'auc': 0.6776689329080914, 'logloss': 1.4833361290037161, 'count': 5911, 'pos': 4614.0, 'neg': 1297.0}
+[Metrics][baseline-test-domain1][Epoch 8] {'auc': 0.7154463629980551, 'logloss': 1.3030624587371966, 'count': 8588, 'pos': 6852.0, 'neg': 1736.0}
+[Metrics][baseline-test-domain2][Epoch 8] {'auc': 0.6276224432992155, 'logloss': 2.436284214957348, 'count': 1610, 'pos': 1401.0, 'neg': 209.0}
+[Metrics][baseline-test-overall][Epoch 8] {'auc': 0.6984174734663806, 'logloss': 1.4824705348565685, 'count': 16109, 'pos': 12867.0, 'neg': 3242.0}
+[Metrics][baseline-test-domain_macro][Epoch 8] {'auc': 0.6735792464017875, 'logloss': 1.7408942675660868, 'count': 16109}
+[Metrics][baseline-test-domain_weighted][Epoch 8] {'auc': 0.6928069130025926, 'logloss': 1.482470534499804, 'count': 16109}
+[AUCSummary][baseline-test][Epoch 8] domain0=0.677669, domain1=0.715446, domain2=0.627622, domain_macro=0.673579, domain_weighted=0.692807, overall_global=0.698417
+[Metrics][augment-valid-domain0][Epoch 8] {'auc': 0.744946946022657, 'logloss': 0.7840787087923097, 'count': 3369, 'pos': 2587.0, 'neg': 782.0}
+[Metrics][augment-valid-domain1][Epoch 8] {'auc': 0.7706829791085594, 'logloss': 0.7590269384130648, 'count': 6138, 'pos': 4831.0, 'neg': 1307.0}
+[Metrics][augment-valid-domain2][Epoch 8] {'auc': 0.6476110854858549, 'logloss': 0.6127686119524671, 'count': 941, 'pos': 813.0, 'neg': 128.0}
+[Metrics][augment-valid-overall][Epoch 8] {'auc': 0.7374999088947596, 'logloss': 0.7539322145643105, 'count': 10448, 'pos': 8231.0, 'neg': 2217.0}
+[Metrics][augment-valid-domain_macro][Epoch 8] {'auc': 0.7210803368723572, 'logloss': 0.7186247530526139, 'count': 10448}
+[Metrics][augment-valid-domain_weighted][Epoch 8] {'auc': 0.7512998103331603, 'logloss': 0.7539322149452483, 'count': 10448}
+[AUCSummary][augment-valid][Epoch 8] domain0=0.744947, domain1=0.770683, domain2=0.647611, domain_macro=0.721080, domain_weighted=0.751300, overall_global=0.737500
+[Metrics][augment-test-domain0][Epoch 8] {'auc': 0.733657645481771, 'logloss': 0.7892472388698235, 'count': 5911, 'pos': 4614.0, 'neg': 1297.0}
+[Metrics][augment-test-domain1][Epoch 8] {'auc': 0.742786970940571, 'logloss': 0.7358480785596552, 'count': 8588, 'pos': 6852.0, 'neg': 1736.0}
+[Metrics][augment-test-domain2][Epoch 8] {'auc': 0.657862292484179, 'logloss': 0.5697710562684647, 'count': 1610, 'pos': 1401.0, 'neg': 209.0}
+[Metrics][augment-test-overall][Epoch 8] {'auc': 0.7179289112975548, 'logloss': 0.7388438193689135, 'count': 16109, 'pos': 12867.0, 'neg': 3242.0}
+[Metrics][augment-test-domain_macro][Epoch 8] {'auc': 0.7114356363021738, 'logloss': 0.6982887912326478, 'count': 16109}
+[Metrics][augment-test-domain_weighted][Epoch 8] {'auc': 0.7309493537637284, 'logloss': 0.7388438219766635, 'count': 16109}
+[AUCSummary][augment-test][Epoch 8] domain0=0.733658, domain1=0.742787, domain2=0.657862, domain_macro=0.711436, domain_weighted=0.730949, overall_global=0.717929
+[Stage4][Epoch 9] baseline_loss=0.053111, augment_loss=0.262461
+[Stage4][Epoch 9][AugStats] domain0: source_candidates=57690 (label0=10449, label1=47241), transferred=3061 (label0=593, label1=2468), transfer_rate=5.3059%, target_true=83538, target_fake=1536, augment_total=88135, transferred_share_in_aug=3.4731%, num_batches=3, diag_label0=(cand=10449, selected=593 (5.68%), scan_pred_mean=0.7165, scan_pred_range=[0.3170,0.8987], below0.5=0.30% below0.6=9.16% below0.7=40.15%, top_steps=30:578,43:3,46:2,47:2,42:1), diag_label1=(cand=47241, selected=2468 (5.22%), scan_pred_mean=0.7248, scan_pred_range=[0.3004,0.8999], below0.5=0.27% below0.6=8.61% below0.7=36.30%, top_steps=30:2413,49:6,37:5,45:5,46:5) | domain1: source_candidates=35556 (label0=6613, label1=28943), transferred=33096 (label0=6300, label1=26796), transfer_rate=93.0813%, target_true=99960, target_fake=1024, augment_total=134080, transferred_share_in_aug=24.6838%, num_batches=2, diag_label0=(cand=6613, selected=6300 (95.27%), scan_pred_mean=0.4763, scan_pred_range=[0.1217,0.7523], below0.5=42.30% below0.6=96.36% below0.7=99.32%, top_steps=30:6018,34:28,31:26,32:22,35:20), diag_label1=(cand=28943, selected=26796 (92.58%), scan_pred_mean=0.4948, scan_pred_range=[0.1227,0.8499], below0.5=30.87% below0.6=95.76% below0.7=99.42%, top_steps=30:24752,31:179,33:157,32:146,36:142) | domain2: source_candidates=77826 (label0=15258, label1=62568), transferred=0 (label0=0, label1=0), transfer_rate=0.0000%, target_true=30840, target_fake=2048, augment_total=32888, transferred_share_in_aug=0.0000%, num_batches=4, diag_label0=(cand=15258, selected=0 (0.00%), scan_pred_mean=0.9089, scan_pred_range=[0.7595,0.9733], below0.5=0.00% below0.6=0.00% below0.7=0.00%, top_steps=none), diag_label1=(cand=62568, selected=0 (0.00%), scan_pred_mean=0.9111, scan_pred_range=[0.7640,0.9720], below0.5=0.00% below0.6=0.00% below0.7=0.00%, top_steps=none)
+[Metrics][baseline-valid-domain0][Epoch 9] {'auc': 0.7042219755080735, 'logloss': 1.7654016622294477, 'count': 3369, 'pos': 2587.0, 'neg': 782.0}
+[Metrics][baseline-valid-domain1][Epoch 9] {'auc': 0.726956833394123, 'logloss': 1.3353909180677217, 'count': 6138, 'pos': 4831.0, 'neg': 1307.0}
+[Metrics][baseline-valid-domain2][Epoch 9] {'auc': 0.5995829489544895, 'logloss': 2.4689734322811563, 'count': 941, 'pos': 813.0, 'neg': 128.0}
+[Metrics][baseline-valid-overall][Epoch 9] {'auc': 0.7102931988581623, 'logloss': 1.576145832607038, 'count': 10448, 'pos': 8231.0, 'neg': 2217.0}
+[Metrics][baseline-valid-domain_macro][Epoch 9] {'auc': 0.6769205859522286, 'logloss': 1.856588670859442, 'count': 10448}
+[Metrics][baseline-valid-domain_weighted][Epoch 9] {'auc': 0.7081539465759956, 'logloss': 1.5761458322097295, 'count': 10448}
+[AUCSummary][baseline-valid][Epoch 9] domain0=0.704222, domain1=0.726957, domain2=0.599583, domain_macro=0.676921, domain_weighted=0.708154, overall_global=0.710293
+[Metrics][baseline-test-domain0][Epoch 9] {'auc': 0.6895592643354559, 'logloss': 1.78186276952448, 'count': 5911, 'pos': 4614.0, 'neg': 1297.0}
+[Metrics][baseline-test-domain1][Epoch 9] {'auc': 0.7023282414768065, 'logloss': 1.4520582302469043, 'count': 8588, 'pos': 6852.0, 'neg': 1736.0}
+[Metrics][baseline-test-domain2][Epoch 9] {'auc': 0.6184902103418952, 'logloss': 2.275737933252769, 'count': 1610, 'pos': 1401.0, 'neg': 209.0}
+[Metrics][baseline-test-overall][Epoch 9] {'auc': 0.6935040031582066, 'logloss': 1.6553979146982842, 'count': 16109, 'pos': 12867.0, 'neg': 3242.0}
+[Metrics][baseline-test-domain_macro][Epoch 9] {'auc': 0.6701259053847192, 'logloss': 1.836552977674718, 'count': 16109}
+[Metrics][baseline-test-domain_weighted][Epoch 9] {'auc': 0.6892637027711308, 'logloss': 1.655397913250765, 'count': 16109}
+[AUCSummary][baseline-test][Epoch 9] domain0=0.689559, domain1=0.702328, domain2=0.618490, domain_macro=0.670126, domain_weighted=0.689264, overall_global=0.693504
+[Metrics][augment-valid-domain0][Epoch 9] {'auc': 0.7421400233510657, 'logloss': 0.7440753921614435, 'count': 3369, 'pos': 2587.0, 'neg': 782.0}
+[Metrics][augment-valid-domain1][Epoch 9] {'auc': 0.7612712909817795, 'logloss': 1.0006145600419405, 'count': 6138, 'pos': 4831.0, 'neg': 1307.0}
+[Metrics][augment-valid-domain2][Epoch 9] {'auc': 0.6492398908364083, 'logloss': 0.6063636728029967, 'count': 941, 'pos': 813.0, 'neg': 128.0}
+[Metrics][augment-valid-overall][Epoch 9] {'auc': 0.7261898988318088, 'logloss': 0.8823842224513914, 'count': 10448, 'pos': 8231.0, 'neg': 2217.0}
+[Metrics][augment-valid-domain_macro][Epoch 9] {'auc': 0.7175504017230846, 'logloss': 0.7836845416687935, 'count': 10448}
+[Metrics][augment-valid-domain_weighted][Epoch 9] {'auc': 0.7450122186057583, 'logloss': 0.8823842249078249, 'count': 10448}
+[AUCSummary][augment-valid][Epoch 9] domain0=0.742140, domain1=0.761271, domain2=0.649240, domain_macro=0.717550, domain_weighted=0.745012, overall_global=0.726190
+[Metrics][augment-test-domain0][Epoch 9] {'auc': 0.7367984168059465, 'logloss': 0.7328196821777928, 'count': 5911, 'pos': 4614.0, 'neg': 1297.0}
+[Metrics][augment-test-domain1][Epoch 9] {'auc': 0.735104167507351, 'logloss': 0.9595137011396888, 'count': 8588, 'pos': 6852.0, 'neg': 1736.0}
+[Metrics][augment-test-domain2][Epoch 9] {'auc': 0.6610879447011533, 'logloss': 0.5595727749685018, 'count': 1610, 'pos': 1401.0, 'neg': 209.0}
+[Metrics][augment-test-overall][Epoch 9] {'auc': 0.7145480979490884, 'logloss': 0.8363593664601379, 'count': 16109, 'pos': 12867.0, 'neg': 3242.0}
+[Metrics][augment-test-domain_macro][Epoch 9] {'auc': 0.7109968430048168, 'logloss': 0.7506353860953278, 'count': 16109}
+[Metrics][augment-test-domain_weighted][Epoch 9] {'auc': 0.728328364470913, 'logloss': 0.8363593627437996, 'count': 16109}
+[AUCSummary][augment-test][Epoch 9] domain0=0.736798, domain1=0.735104, domain2=0.661088, domain_macro=0.710997, domain_weighted=0.728328, overall_global=0.714548
+[Stage4][Epoch 9] new best augment domain2 valid auc=0.649240
+[Stage4] baseline per-domain best epochs: {0: {'epoch': 0, 'auc': 0.7361126901475704}, 1: {'epoch': 3, 'auc': 0.7640820561291468}, 2: {'epoch': 2, 'auc': 0.6422538053505535}}
+[Stage4] augment per-domain best epochs: {0: {'epoch': 2, 'auc': 0.7496987198435616}, 1: {'epoch': 4, 'auc': 0.7786062564250869}, 2: {'epoch': 9, 'auc': 0.6492398908364083}}
+
+===== Final branch metrics on all domains (per-domain best checkpoints) =====
+[Metrics][final-baseline-valid-domain0][Epoch 10] {'auc': 0.7361126901475704, 'logloss': 1.1820657127098477, 'count': 3369, 'pos': 2587.0, 'neg': 782.0}
+[Metrics][final-baseline-valid-domain1][Epoch 10] {'auc': 0.7640820561291468, 'logloss': 1.0995295087037529, 'count': 6138, 'pos': 4831.0, 'neg': 1307.0}
+[Metrics][final-baseline-valid-domain2][Epoch 10] {'auc': 0.6422538053505535, 'logloss': 1.4406979304753809, 'count': 941, 'pos': 813.0, 'neg': 128.0}
+[Metrics][final-baseline-valid-overall][Epoch 10] {'auc': 0.7467936846340449, 'logloss': 1.1568710052756934, 'count': 10448, 'pos': 8231.0, 'neg': 2217.0}
+[Metrics][final-baseline-valid-domain_macro][Epoch 10] {'auc': 0.7141495172090903, 'logloss': 1.2407643839629938, 'count': 10448}
+[Metrics][final-baseline-valid-domain_weighted][Epoch 10] {'auc': 0.7440907488957446, 'logloss': 1.1568710052756934, 'count': 10448}
+[AUCSummary][final-baseline-valid][Epoch 10] domain0=0.736113, domain1=0.764082, domain2=0.642254, domain_macro=0.714150, domain_weighted=0.744091, overall_global=0.746794
+[Metrics][final-baseline-test-domain0][Epoch 10] {'auc': 0.7174910825856341, 'logloss': 1.2438044478748802, 'count': 5911, 'pos': 4614.0, 'neg': 1297.0}
+[Metrics][final-baseline-test-domain1][Epoch 10] {'auc': 0.7357557398559673, 'logloss': 1.2569427605951353, 'count': 8588, 'pos': 6852.0, 'neg': 1736.0}
+[Metrics][final-baseline-test-domain2][Epoch 10] {'auc': 0.6375931067692592, 'logloss': 1.4301580238364902, 'count': 1610, 'pos': 1401.0, 'neg': 209.0}
+[Metrics][final-baseline-test-overall][Epoch 10] {'auc': 0.7216976324046417, 'logloss': 1.2694336667549935, 'count': 16109, 'pos': 12867.0, 'neg': 3242.0}
+[Metrics][final-baseline-test-domain_macro][Epoch 10] {'auc': 0.6969466430702869, 'logloss': 1.3103017441021685, 'count': 16109}
+[Metrics][final-baseline-test-domain_weighted][Epoch 10] {'auc': 0.7192429688338965, 'logloss': 1.2694336667549933, 'count': 16109}
+[AUCSummary][final-baseline-test][Epoch 10] domain0=0.717491, domain1=0.735756, domain2=0.637593, domain_macro=0.696947, domain_weighted=0.719243, overall_global=0.721698
+[Metrics][final-augment-valid-domain0][Epoch 10] {'auc': 0.7496987198435616, 'logloss': 0.5302938633515455, 'count': 3369, 'pos': 2587.0, 'neg': 782.0}
+[Metrics][final-augment-valid-domain1][Epoch 10] {'auc': 0.7786062564250869, 'logloss': 0.5891286660376371, 'count': 6138, 'pos': 4831.0, 'neg': 1307.0}
+[Metrics][final-augment-valid-domain2][Epoch 10] {'auc': 0.6492398908364083, 'logloss': 0.6063636728029967, 'count': 941, 'pos': 813.0, 'neg': 128.0}
+[Metrics][final-augment-valid-overall][Epoch 10] {'auc': 0.7480069598375767, 'logloss': 0.5717094174844941, 'count': 10448, 'pos': 8231.0, 'neg': 2217.0}
+[Metrics][final-augment-valid-domain_macro][Epoch 10] {'auc': 0.725848289035019, 'logloss': 0.575262067397393, 'count': 10448}
+[Metrics][final-augment-valid-domain_weighted][Epoch 10] {'auc': 0.7576335113291732, 'logloss': 0.571709417484494, 'count': 10448}
+[AUCSummary][final-augment-valid][Epoch 10] domain0=0.749699, domain1=0.778606, domain2=0.649240, domain_macro=0.725848, domain_weighted=0.757634, overall_global=0.748007
+[Metrics][final-augment-test-domain0][Epoch 10] {'auc': 0.7366419254997778, 'logloss': 0.5266023904608382, 'count': 5911, 'pos': 4614.0, 'neg': 1297.0}
+[Metrics][final-augment-test-domain1][Epoch 10] {'auc': 0.7485049270824087, 'logloss': 0.5785961515930501, 'count': 8588, 'pos': 6852.0, 'neg': 1736.0}
+[Metrics][final-augment-test-domain2][Epoch 10] {'auc': 0.6610879447011533, 'logloss': 0.5595727749685018, 'count': 1610, 'pos': 1401.0, 'neg': 209.0}
+[Metrics][final-augment-test-overall][Epoch 10] {'auc': 0.7304269174015734, 'logloss': 0.5576164037242793, 'count': 16109, 'pos': 12867.0, 'neg': 3242.0}
+[Metrics][final-augment-test-domain_macro][Epoch 10] {'auc': 0.7154115990944465, 'logloss': 0.5549237723407967, 'count': 16109}
+[Metrics][final-augment-test-domain_weighted][Epoch 10] {'auc': 0.7354151298269148, 'logloss': 0.5576164037242793, 'count': 16109}
+[AUCSummary][final-augment-test][Epoch 10] domain0=0.736642, domain1=0.748505, domain2=0.661088, domain_macro=0.715412, domain_weighted=0.735415, overall_global=0.730427
+Final comparison: {'baseline_valid': {'domain0': {'auc': 0.7361126901475704, 'logloss': 1.1820657127098477, 'count': 3369, 'pos': 2587.0, 'neg': 782.0}, 'domain1': {'auc': 0.7640820561291468, 'logloss': 1.0995295087037529, 'count': 6138, 'pos': 4831.0, 'neg': 1307.0}, 'domain2': {'auc': 0.6422538053505535, 'logloss': 1.4406979304753809, 'count': 941, 'pos': 813.0, 'neg': 128.0}, 'overall': {'auc': 0.7467936846340449, 'logloss': 1.1568710052756934, 'count': 10448, 'pos': 8231.0, 'neg': 2217.0}, 'domain_macro': {'auc': 0.7141495172090903, 'logloss': 1.2407643839629938, 'count': 10448}, 'domain_weighted': {'auc': 0.7440907488957446, 'logloss': 1.1568710052756934, 'count': 10448}}, 'baseline_test': {'domain0': {'auc': 0.7174910825856341, 'logloss': 1.2438044478748802, 'count': 5911, 'pos': 4614.0, 'neg': 1297.0}, 'domain1': {'auc': 0.7357557398559673, 'logloss': 1.2569427605951353, 'count': 8588, 'pos': 6852.0, 'neg': 1736.0}, 'domain2': {'auc': 0.6375931067692592, 'logloss': 1.4301580238364902, 'count': 1610, 'pos': 1401.0, 'neg': 209.0}, 'overall': {'auc': 0.7216976324046417, 'logloss': 1.2694336667549935, 'count': 16109, 'pos': 12867.0, 'neg': 3242.0}, 'domain_macro': {'auc': 0.6969466430702869, 'logloss': 1.3103017441021685, 'count': 16109}, 'domain_weighted': {'auc': 0.7192429688338965, 'logloss': 1.2694336667549933, 'count': 16109}}, 'augment_valid': {'domain0': {'auc': 0.7496987198435616, 'logloss': 0.5302938633515455, 'count': 3369, 'pos': 2587.0, 'neg': 782.0}, 'domain1': {'auc': 0.7786062564250869, 'logloss': 0.5891286660376371, 'count': 6138, 'pos': 4831.0, 'neg': 1307.0}, 'domain2': {'auc': 0.6492398908364083, 'logloss': 0.6063636728029967, 'count': 941, 'pos': 813.0, 'neg': 128.0}, 'overall': {'auc': 0.7480069598375767, 'logloss': 0.5717094174844941, 'count': 10448, 'pos': 8231.0, 'neg': 2217.0}, 'domain_macro': {'auc': 0.725848289035019, 'logloss': 0.575262067397393, 'count': 10448}, 'domain_weighted': {'auc': 0.7576335113291732, 'logloss': 0.571709417484494, 'count': 10448}}, 'augment_test': {'domain0': {'auc': 0.7366419254997778, 'logloss': 0.5266023904608382, 'count': 5911, 'pos': 4614.0, 'neg': 1297.0}, 'domain1': {'auc': 0.7485049270824087, 'logloss': 0.5785961515930501, 'count': 8588, 'pos': 6852.0, 'neg': 1736.0}, 'domain2': {'auc': 0.6610879447011533, 'logloss': 0.5595727749685018, 'count': 1610, 'pos': 1401.0, 'neg': 209.0}, 'overall': {'auc': 0.7304269174015734, 'logloss': 0.5576164037242793, 'count': 16109, 'pos': 12867.0, 'neg': 3242.0}, 'domain_macro': {'auc': 0.7154115990944465, 'logloss': 0.5549237723407967, 'count': 16109}, 'domain_weighted': {'auc': 0.7354151298269148, 'logloss': 0.5576164037242793, 'count': 16109}}}
+
+进程已结束，退出代码为 0

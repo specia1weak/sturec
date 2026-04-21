@@ -32,7 +32,7 @@ class SchemaManager:
 
         ## path & dir
         self.work_dir = Path(work_dir)
-        self.work_dir.mkdir(exist_ok=True)
+        self.work_dir.mkdir(parents=True, exist_ok=True)
         self.meta_filepath = self.work_dir / self.SCHEMA_META_NAME
 
         ## field_name

@@ -103,8 +103,8 @@ def generate_hybrid_splits_polars(
     # 整理最终格式输出
     train_samples = train_seq_lf.select([
         "user",
-        pl.col("item").alias("target_item"),
-        pl.col("domain_indicator").alias("target_domain"),
+        pl.col("item"),
+        pl.col("domain_indicator"),
         "is_overlapping",
         "time",
         "item_seq",
