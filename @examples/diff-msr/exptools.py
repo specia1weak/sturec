@@ -1,4 +1,5 @@
 import json
+from collections import defaultdict
 from copy import deepcopy
 from pathlib import Path
 from typing import Optional, Tuple
@@ -237,6 +238,95 @@ def save_experiment_record(record: dict, output_path: Path) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", encoding="utf-8") as fp:
         json.dump(record, fp, ensure_ascii=False, indent=2, allow_nan=True)
+
+
+class Stage4EmbeddingRecorder:
+    def __init__(self, max_per_bucket: int = 2048):
+        self.max_per_bucket = int(max(1, max_per_bucket))
+        self.user_storage = {"origin": {}, "diffaug": {}}
+        self.item_storage = {"origin": {}, "diffaug": {}}
+        self.counts = defaultdict(int)
+
+    def _ensure_bucket(self, storage: dict, group: str, domain_key: str, bucket: str) -> dict:
+        return storage.setdefault(group, {}).setdefault(domain_key, {}).setdefault(
+            bucket,
+            {"embeddings": [], "labels": []},
+        )
+
+    def _append(self, storage: dict, group: str, domain_key: str, bucket: str, embeddings: torch.Tensor, labels: torch.Tensor) -> None:
+        if embeddings is None or labels is None or embeddings.numel() == 0 or labels.numel() == 0:
+            return
+        key = (group, domain_key, bucket)
+        remaining = self.max_per_bucket - self.counts[key]
+        if remaining <= 0:
+            return
+        take = min(int(embeddings.size(0)), int(labels.size(0)), remaining)
+        if take <= 0:
+            return
+        bucket_store = self._ensure_bucket(storage, group, domain_key, bucket)
+        bucket_store["embeddings"].append(embeddings[:take].detach().cpu())
+        bucket_store["labels"].append(labels[:take].detach().cpu())
+        self.counts[key] += take
+
+    def add_pair_embeddings(
+            self,
+            group: str,
+            domain_key: str,
+            bucket: str,
+            pair_embeddings: torch.Tensor,
+            labels: torch.Tensor,
+    ) -> None:
+        if pair_embeddings is None or pair_embeddings.numel() == 0:
+            return
+        if pair_embeddings.dim() != 3 or pair_embeddings.size(1) != 2:
+            raise ValueError(f"pair_embeddings shape should be [B, 2, D], got {tuple(pair_embeddings.shape)}")
+        self._append(self.user_storage, group, domain_key, bucket, pair_embeddings[:, 0, :], labels)
+        self._append(self.item_storage, group, domain_key, bucket, pair_embeddings[:, 1, :], labels)
+
+    def add_split_embeddings(
+            self,
+            group: str,
+            domain_key: str,
+            bucket: str,
+            user_embeddings: torch.Tensor,
+            item_embeddings: torch.Tensor,
+            labels: torch.Tensor,
+    ) -> None:
+        self._append(self.user_storage, group, domain_key, bucket, user_embeddings, labels)
+        self._append(self.item_storage, group, domain_key, bucket, item_embeddings, labels)
+
+    def _finalize_storage(self, storage: dict) -> dict:
+        finalized = {}
+        for group, domain_map in storage.items():
+            finalized[group] = {}
+            for domain_key, bucket_map in domain_map.items():
+                finalized[group][domain_key] = {}
+                for bucket, payload in bucket_map.items():
+                    finalized[group][domain_key][bucket] = {
+                        "embeddings": torch.cat(payload["embeddings"], dim=0) if payload["embeddings"] else torch.empty(0),
+                        "labels": torch.cat(payload["labels"], dim=0) if payload["labels"] else torch.empty(0),
+                    }
+        return finalized
+
+    def export(self, output_dir: Path, prefix: str = "stage4_embedding_compare") -> dict:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        user_path = output_dir / f"{prefix}_user.pt"
+        item_path = output_dir / f"{prefix}_item.pt"
+        payload_meta = {
+            "max_per_bucket": self.max_per_bucket,
+            "counts": {f"{group}|{domain}|{bucket}": count for (group, domain, bucket), count in self.counts.items()},
+        }
+        user_payload = self._finalize_storage(self.user_storage)
+        user_payload["meta"] = payload_meta
+        item_payload = self._finalize_storage(self.item_storage)
+        item_payload["meta"] = payload_meta
+        torch.save(user_payload, user_path)
+        torch.save(item_payload, item_path)
+        return {
+            "user": str(user_path),
+            "item": str(item_path),
+            "meta": payload_meta,
+        }
 
 
 def format_auc_summary(metrics: dict, domain_specs: Tuple[Tuple[int, int], ...]) -> str:
@@ -633,8 +723,11 @@ def build_augmented_batch(
         target_domain_idx: int,
         device: torch.device,
         cfg: DiffMSRExperimentSettings,
+        target_raw_domain: Optional[int] = None,
+        embedding_recorder: Optional[Stage4EmbeddingRecorder] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, dict]:
     source_as_target = interaction_with_domain(source_batch, target_domain_idx, frozen_backbone.DOMAIN).to(device)
+    domain_key = f"domain{target_domain_idx}" if target_raw_domain is None else f"domain{target_raw_domain}"
     with torch.no_grad():
         target_domain_e = frozen_backbone.domain_emb(
             torch.full((len(source_as_target),), target_domain_idx, dtype=torch.long, device=device)
@@ -672,6 +765,14 @@ def build_augmented_batch(
         stats[f"source_candidate_label{label_value}"] += candidate_count
         with torch.no_grad():
             pair_embedding = frozen_backbone.embed_user_item_pair(subset)
+            if embedding_recorder is not None:
+                embedding_recorder.add_pair_embeddings(
+                    "origin",
+                    domain_key,
+                    f"source_candidate_label{label_value}",
+                    pair_embedding,
+                    subset[frozen_backbone.LABEL].float(),
+                )
             selected_steps, transfer_diag = select_transfer_steps(pair_embedding, classifier, diffusion, cfg)
             merge_transfer_diagnostic(stats["transfer_diag_by_label"][label_value], transfer_diag)
             valid_mask = selected_steps >= 0
@@ -680,9 +781,25 @@ def build_augmented_batch(
             transferred_count = int(valid_mask.sum().item())
             stats["transferred_total"] += transferred_count
             stats[f"transferred_label{label_value}"] += transferred_count
+            if embedding_recorder is not None:
+                embedding_recorder.add_pair_embeddings(
+                    "origin",
+                    domain_key,
+                    f"transferred_source_label{label_value}",
+                    pair_embedding[valid_mask],
+                    subset[frozen_backbone.LABEL][valid_mask].float(),
+                )
             transferred_pair = denoise_from_intermediate(
                 diffusion, pair_embedding[valid_mask], selected_steps[valid_mask]
             )
+            if embedding_recorder is not None:
+                embedding_recorder.add_pair_embeddings(
+                    "diffaug",
+                    domain_key,
+                    f"transferred_label{label_value}",
+                    transferred_pair,
+                    subset[frozen_backbone.LABEL][valid_mask].float(),
+                )
             transferred_user_e, transferred_item_e = frozen_backbone.split_pair_embedding(transferred_pair)
             domain_parts.append(target_domain_e[label_mask][valid_mask])
             head_domain_id_parts.append(
@@ -698,6 +815,19 @@ def build_augmented_batch(
             target_true,
             domain_override=target_domain_idx,
         )
+    if embedding_recorder is not None:
+        true_labels = target_true[frozen_backbone.LABEL].float()
+        for label_value in (0, 1):
+            label_mask = true_labels.long() == label_value
+            if label_mask.any().item():
+                embedding_recorder.add_split_embeddings(
+                    "origin",
+                    domain_key,
+                    f"target_true_label{label_value}",
+                    true_user_e[label_mask],
+                    true_item_e[label_mask],
+                    true_labels[label_mask],
+                )
     stats["target_true_total"] = len(target_true)
     domain_parts.append(true_domain_e)
     head_domain_id_parts.append(torch.full((len(target_true),), target_domain_idx, dtype=torch.long, device=device))
@@ -713,6 +843,17 @@ def build_augmented_batch(
         )
         fake_pairs = generate_pure_fake_pairs(diffusion0, diffusion1, fake_labels)
         fake_user_e, fake_item_e = frozen_backbone.split_pair_embedding(fake_pairs)
+    if embedding_recorder is not None:
+        for label_value in (0, 1):
+            label_mask = fake_labels.long() == label_value
+            if label_mask.any().item():
+                embedding_recorder.add_pair_embeddings(
+                    "diffaug",
+                    domain_key,
+                    f"target_fake_label{label_value}",
+                    fake_pairs[label_mask],
+                    fake_labels[label_mask],
+                )
     stats["target_fake_total"] = len(target_fake_anchor)
     domain_parts.append(fake_domain_e)
     head_domain_id_parts.append(
@@ -785,6 +926,7 @@ def train_augmented_epoch(
         optimizer: torch.optim.Optimizer,
         device: torch.device,
         cfg: DiffMSRExperimentSettings,
+        embedding_recorder: Optional[Stage4EmbeddingRecorder] = None,
 ) -> Tuple[float, dict]:
     augment_model.train()
     frozen_backbone.eval()
@@ -840,6 +982,8 @@ def train_augmented_epoch(
                 target_domain_idx,
                 device,
                 cfg,
+                target_raw_domain=raw_domain,
+                embedding_recorder=embedding_recorder,
             )
             all_domain_parts.append(domain_e)
             all_head_domain_id_parts.append(head_domain_ids)
@@ -1083,11 +1227,13 @@ def train_stage4_branches(
         domain_specs: Tuple[Tuple[int, int], ...],
         device: torch.device,
         cfg: DiffMSRExperimentSettings,
+        work_dir: Optional[Path] = None,
 ) -> Tuple[DiffMSRIdModel, DiffMSRIdModel, dict, dict, dict]:
     baseline_model = deepcopy(backbone).to(device)
     augment_model = deepcopy(backbone).to(device)
     baseline_model.configure_stage4_trainability()
     augment_model.configure_stage4_trainability()
+    embedding_recorder = Stage4EmbeddingRecorder(cfg.stage4_embedding_dump_max_per_bucket)
 
     baseline_optimizer = torch.optim.Adam(
         filter(lambda p: p.requires_grad, baseline_model.parameters()),
@@ -1137,6 +1283,7 @@ def train_stage4_branches(
             augment_optimizer,
             device,
             cfg,
+            embedding_recorder=embedding_recorder,
         )
         print(f"[Stage4][Epoch {epoch}] baseline_loss={baseline_loss:.6f}, augment_loss={augment_loss:.6f}")
         print(f"[Stage4][Epoch {epoch}][AugStats] {format_multi_domain_aug_stats(augment_stats, cfg)}")
@@ -1262,6 +1409,11 @@ def train_stage4_branches(
         "baseline_weighted_best": best_baseline_weighted_info,
         "augment_weighted_best": best_augment_weighted_info,
     }
+    if work_dir is not None:
+        stage4_info["embedding_dump"] = embedding_recorder.export(
+            Path(work_dir),
+            prefix="stage4_embedding_compare",
+        )
     print(
         "[Stage4] weighted-best epochs:",
         {

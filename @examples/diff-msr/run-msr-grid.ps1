@@ -1,5 +1,5 @@
 param(
-    [string]$DatasetIndices = "0,1,2",
+    [string]$DatasetIndices = "0,2",
     [string]$BackboneIndices = "0,1,2,3,4,5,6,7",
     [string]$CustomSuffix = "msr",
     [string]$PythonBin = "python"

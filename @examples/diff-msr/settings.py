@@ -73,6 +73,7 @@ class DiffMSRExperimentSettings:
     aug_step1: int = 30
     aug_step2: int = 50
     aug_target_sample_size: int = 512
+    stage4_embedding_dump_max_per_bucket: int = 2048
     transfer_diagnostic_thresholds: Tuple[float, ...] = (0.5, 0.6, 0.7)
     transfer_diagnostic_top_steps: int = 5
 
@@ -131,6 +132,7 @@ class DiffMSRExperimentSettings:
             "aug_step1": self.aug_step1,
             "aug_step2": self.aug_step2,
             "aug_target_sample_size": self.aug_target_sample_size,
+            "stage4_embedding_dump_max_per_bucket": self.stage4_embedding_dump_max_per_bucket,
             "transfer_diagnostic_thresholds": self.transfer_diagnostic_thresholds,
             "transfer_diagnostic_top_steps": self.transfer_diagnostic_top_steps,
         }

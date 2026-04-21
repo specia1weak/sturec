@@ -253,9 +253,12 @@ def run_experiment(
         domain_specs,
         device,
         cfg,
+        work_dir=manager.work_dir,
     )
     torch.save(baseline_model.state_dict(), checkpoint_dir / "stage4_baseline_model.pt")
     torch.save(augment_model.state_dict(), checkpoint_dir / "stage4_augment_model.pt")
+    if stage4_info.get("embedding_dump") is not None:
+        print(f"[Stage4][EmbeddingDump] {stage4_info['embedding_dump']}")
     if stage4_info.get("baseline_weighted_best") is not None:
         torch.save(stage4_info["baseline_weighted_best"]["state"], checkpoint_dir / "stage4_baseline_weighted_best.pt")
     if stage4_info.get("augment_weighted_best") is not None:
@@ -371,6 +374,7 @@ def run_experiment(
                 f"domain{raw_domain}": str(checkpoint_dir / f"stage4_augment_domain{raw_domain}_best.pt")
                 for raw_domain, _ in domain_specs
             },
+            "stage4_embedding_dump": stage4_info.get("embedding_dump"),
         },
         "stage0": {
             "best_by_domain": summarize_best_by_domain(stage0_best_by_domain),
