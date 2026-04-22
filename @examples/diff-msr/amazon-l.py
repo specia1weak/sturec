@@ -16,8 +16,8 @@ from betterbole.models.backbone.star import STAR
 from betterbole.models.backbone.shabtm import SharedBottomLess
 from betterbole.models.utils.general import MLP
 from betterbole.utils import change_root_workdir
-from betterbole.utils.monitor import ExplicitFeatureMonitor
-from betterbole.utils.optimize import create_optimizer_groups
+from betterbole.utils import ExplicitFeatureMonitor
+from betterbole.utils import create_optimizer_groups
 from split_tool import generate_hybrid_splits_polars
 change_root_workdir()
 Backbone = STAR
@@ -154,7 +154,7 @@ class SpecialModel(nn.Module):
         return loss
 
 if __name__ == '__main__':
-    from betterbole.utils.task_chain import auto_queue
+    from betterbole.utils import auto_queue
     auto_queue()
     device = "cuda"
     user_setting = SparseEmbSetting("user", FeatureSource.USER_ID, EMB_DIM, min_freq=1, use_oov=True)
@@ -203,7 +203,7 @@ if __name__ == '__main__':
     ps_valid = ParquetStreamDataset(test_path, manager.fields(), batch_size=4096 * 2, shuffle=False) # 更少的读取
     model = SimplePLE(manager).to(device)
 
-    from betterbole.utils.time import CudaNamedTimer
+    from betterbole.utils import CudaNamedTimer
     ntr = CudaNamedTimer()
     named_parameters = create_optimizer_groups(model, weight_decay=1e-5, no_decay_keywords=["embedding"]) # 对Embedding施加wd反而更好
     optimizer = torch.optim.Adam(named_parameters, lr=1e-3)

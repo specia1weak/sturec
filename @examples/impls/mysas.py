@@ -1,5 +1,4 @@
 import math
-from recbole.data import data_preparation
 from recbole.model.abstract_recommender import SequentialRecommender
 from recbole.trainer import Trainer
 from recbole.utils import InputType

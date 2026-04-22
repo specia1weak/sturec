@@ -1,4 +1,3 @@
-import argparse
 from copy import deepcopy
 from pathlib import Path
 from typing import Optional, Tuple
@@ -1153,7 +1152,7 @@ def train_stage4_branches(
 
 
 if __name__ == "__main__":
-    from betterbole.utils.task_chain import auto_queue
+    from betterbole.utils import auto_queue
 
     auto_queue()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

@@ -4,7 +4,9 @@ from torch import nn
 from betterbole.models.msr.backbone.base import MSRBackbone
 from betterbole.models.msr.backbone.common import build_mlp, to_dims
 from betterbole.models.utils.container import domain_select
-
+"""
+使用M3oE请每隔1000batch单独更新一次arch_params
+"""
 
 class M3oEBackbone(MSRBackbone):
     def __init__(
@@ -85,6 +87,20 @@ class M3oEBackbone(MSRBackbone):
         mixed = balance[:, :1] * shared_state + balance[:, 1:] * domain_state
         return self.output_project(mixed + star_state)
 
+    def get_parameter_groups(self):
+        """
+        将参数分为架构参数(Architecture)和普通参数(Weights)
+        注意：现在返回的是 (name, param) 的元组列表
+        """
+        arch_named_params = []
+        base_named_params = []
+        for name, param in self.named_parameters():
+            if 'gate' in name or 'balance' in name:
+                arch_named_params.append((name, param))
+            else:
+                base_named_params.append((name, param))
+        return arch_named_params, base_named_params
+
 
 def create_m3oe(
         input_dim: int = 48,
@@ -98,3 +114,32 @@ def create_m3oe(
     out = model(x, domain_ids)
     assert out.shape == (batch_size, model.output_dim)
     return model, out
+
+
+if __name__ == '__main__':
+    m3oe, _ = create_m3oe()
+    arch_params, base_params = m3oe.get_parameter_groups()
+    optimizer_base = torch.optim.Adam(
+        base_params,
+        lr=1e-3,
+        weight_decay=1e-5
+    )
+    optimizer_arch = torch.optim.Adam(
+        arch_params,
+        lr=1e-4,
+        weight_decay=0
+    )
+    from betterbole.models.utils.tests import dummy_input_multi_domain
+    for epoch in range(10):
+        optimizer_base.zero_grad()
+        for batch in range(30):
+            x, domain_ids = dummy_input_multi_domain(num_domains=3, batch_size=10, emb_size=48)
+            out = m3oe(x, domain_ids)
+
+            loss = (out - 1)
+            optimizer_base.zero_grad()
+            loss.backward()
+            optimizer_base.step()
+
+
+        optimizer_arch.step()

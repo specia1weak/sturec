@@ -6,7 +6,8 @@ if __name__ == '__main__':
     change_root_workdir()
     ignore_future_warning()
     from recbole.config import Config
-    from recbole.data import create_dataset, data_preparation
+    from recbole.data import create_dataset
+
     # 1. 初始化配置
     # 注意：传 GRU4Rec 或 SASRec，Config 就会去加载序列模型的预处理逻辑
     cfg_override = {

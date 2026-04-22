@@ -7,7 +7,7 @@ from betterbole.emb import SchemaManager
 import polars as pl
 from betterbole.core.enum_type import FeatureSource
 from betterbole.evaluate.evaluator import Evaluator, LogDecorator
-from betterbole.utils.sequential import extract_history_items
+from betterbole.utils import extract_history_items
 
 from torch import nn
 import torch.nn.functional as F
@@ -20,8 +20,8 @@ from betterbole.models.shabtm import SharedBottomLess, SharedBottomPlus
 from betterbole.models.utils.general import MLP, ModuleFactory
 from betterbole.models.utils.sequence import AttentionSequencePoolingLayer
 from betterbole.utils import change_root_workdir
-from betterbole.utils.monitor import ExplicitFeatureMonitor
-from betterbole.utils.visualize import plot_bias_distributions, plot_sparsity_distributions, plot_power2_sparsity
+from betterbole.utils import ExplicitFeatureMonitor
+from betterbole.utils import plot_bias_distributions, plot_sparsity_distributions, plot_power2_sparsity
 
 change_root_workdir()
 Backbone = MLP
@@ -231,7 +231,7 @@ class SpecialModel(nn.Module):
 
 
 if __name__ == '__main__':
-    from betterbole.utils.task_chain import auto_queue
+    from betterbole.utils import auto_queue
     auto_queue()
     device = "cuda"
 
@@ -330,7 +330,7 @@ if __name__ == '__main__':
     model = SpecialModel(manager).to(device)
 
 
-    from betterbole.utils.time import CudaNamedTimer
+    from betterbole.utils import CudaNamedTimer
     ntr = CudaNamedTimer()
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-5)
     for epoch in range(50):

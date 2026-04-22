@@ -7,7 +7,7 @@ from betterbole.emb import SchemaManager
 import polars as pl
 from betterbole.core.enum_type import FeatureSource
 from betterbole.evaluate.evaluator import Evaluator, LogDecorator
-from betterbole.utils.sequential import extract_history_items
+from betterbole.utils import extract_history_items
 
 from torch import nn
 
@@ -214,7 +214,7 @@ class TransformerModel(nn.Module):
 
 
 if __name__ == '__main__':
-    from betterbole.utils.task_chain import auto_queue
+    from betterbole.utils import auto_queue
     auto_queue()
     device = "cuda"
 
@@ -278,7 +278,7 @@ if __name__ == '__main__':
     model = TransformerModel(manager).to(device)
 
 
-    from betterbole.utils.time import CudaNamedTimer
+    from betterbole.utils import CudaNamedTimer
     ntr = CudaNamedTimer()
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-5)
     for epoch in range(50):

@@ -1,4 +1,3 @@
-from pathlib import Path
 from betterbole.datasets.base import DatasetBase
 import polars as pl
 
@@ -197,7 +196,7 @@ if __name__ == "__main__":
     df_preview = lf_train.head(5).collect()
     print(df_preview)
     print(df_preview.columns)
-    from betterbole.utils.visualize import plot_power2_sparsity, plot_sparsity_ecdf, plot_bias_distributions
+    from betterbole.utils import plot_power2_sparsity, plot_sparsity_ecdf, plot_bias_distributions
     plot_power2_sparsity(lf_train,"user_id", "item_id")
     plot_sparsity_ecdf(lf_train, "user_id", "item_id")
     plot_bias_distributions(lf_train, "user_id", "item_id", "click")

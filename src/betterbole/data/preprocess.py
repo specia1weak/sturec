@@ -6,7 +6,7 @@ from betterbole.emb.schema import EmbSetting, SparseEmbSetting, SparseSetEmbSett
 from betterbole.core.enum_type import FeatureSource
 import polars as pl
 
-from betterbole.utils.sequential import extract_history_items
+from betterbole.utils import extract_history_items
 
 
 class PreProcessPipeline(ABC):

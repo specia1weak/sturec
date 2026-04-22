@@ -65,7 +65,7 @@ class SimplePLE(nn.Module):
         return loss
 
 if __name__ == '__main__':
-    from betterbole.utils.task_chain import auto_queue
+    from betterbole.utils import auto_queue
     auto_queue()
     device = "cuda"
 
@@ -133,7 +133,7 @@ if __name__ == '__main__':
     #         distribution="uniform"
     #     )
 
-    from betterbole.utils.time import CudaNamedTimer
+    from betterbole.utils import CudaNamedTimer
     ntr = CudaNamedTimer()
     model = SimplePLE(manager).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-5)

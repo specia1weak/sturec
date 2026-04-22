@@ -2,7 +2,6 @@ import math
 
 import torch
 import torch.nn as nn
-from numpy.array_api import arange
 from recbole.model.abstract_recommender import SequentialRecommender
 from recbole.trainer import Trainer
 from recbole.utils import InputType

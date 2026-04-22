@@ -104,7 +104,7 @@ class PLEVersion4(PLE):
 if __name__ == '__main__':
     model = PLE(128, 5)
 
-    from betterbole.utils.monitor import IndividualReLUMonitor
+    from betterbole.utils import IndividualReLUMonitor
     from betterbole.models.utils.tests import dummy_input_multi_domain
     irm = IndividualReLUMonitor(model, 50)
 

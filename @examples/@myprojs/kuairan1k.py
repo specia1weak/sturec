@@ -9,9 +9,10 @@ from betterbole.evaluate.evaluator import Evaluator, LogDecorator
 
 from torch import nn
 
+from betterbole.models.msr import M3oEBackbone
+from betterbole.utils.optimize import split_params_by_decay
 from betterbole.models.backbone.ple import PLE
-from betterbole.utils import change_root_workdir
-from betterbole.utils.optimize import create_optimizer_groups
+from betterbole.experiment import change_root_workdir
 
 change_root_workdir()
 Backbone = PLE
@@ -60,8 +61,57 @@ class SimplePLE(nn.Module):
         loss = nn.functional.binary_cross_entropy_with_logits(final_logits, labels)
         return loss
 
+
+class M3oE(nn.Module):
+    def __init__(self, schema_manager: SchemaManager):
+        super(M3oE, self).__init__()
+        manager = schema_manager
+        self.user_emb_layer = UserSideEmb(manager.settings)
+        self.item_emb_layer = ItemSideEmb(manager.settings)
+        self.inter_emb_layer = InterSideEmb(manager.settings)
+
+        self.manager = manager
+        self.input_dim = manager.source2emb_size(FeatureSource.USER_ID, FeatureSource.USER,
+                                                 FeatureSource.ITEM_ID, FeatureSource.ITEM,
+                                                 FeatureSource.INTERACTION)
+        print(f"输入总维度{self.input_dim}")
+        self.DOMAIN = manager.domain_field
+        num_domains = manager.get_setting(self.DOMAIN).vocab_size
+        self.m3oe = M3oEBackbone(self.input_dim, num_domains)
+        self.m3oe.get_parameter_groups()
+        self.LABEL = manager.label_field
+
+    @property
+    def param_groups(self):
+        return self.m3oe.get_parameter_groups()
+
+    def concat_embed_input_fields(self, interaction):
+        user_emb = self.user_emb_layer.forward(interaction)
+        item_emb = self.item_emb_layer.forward(interaction)
+        inter_emb = self.inter_emb_layer.forward(interaction)
+        return torch.cat([user_emb, item_emb, inter_emb], dim=-1)
+
+    def forward(self, x, domain_ids):
+        return self.ple.forward(x, domain_ids)
+
+    def predict(self, interaction):
+        x = self.concat_embed_input_fields(interaction)
+        domain_ids = interaction[self.DOMAIN] - 1
+        x = torch.flatten(x, start_dim=1)
+        final_logits = self.forward(x, domain_ids)
+        return torch.sigmoid(final_logits)
+
+    def calculate_loss(self, interaction):
+        labels = interaction[self.LABEL].float()
+        domain_ids = interaction[self.DOMAIN] - 1
+        x = self.concat_embed_input_fields(interaction)
+        x = torch.flatten(x, start_dim=1)
+        final_logits = self.forward(x, domain_ids)
+        loss = nn.functional.binary_cross_entropy_with_logits(final_logits, labels)
+        return loss
+
 if __name__ == '__main__':
-    from betterbole.utils.task_chain import auto_queue
+    from betterbole.utils import auto_queue
     auto_queue()
     device = "cuda"
 
@@ -70,7 +120,7 @@ if __name__ == '__main__':
     settings_list = [
         user_setting,
         item_setting,
-        SparseEmbSetting("tab", FeatureSource.INTERACTION, 16),
+        SparseEmbSetting("tab", FeatureSource.INTERACTION, 16, padding_zero=False, use_oov=False),
 
         SparseEmbSetting("user_active_degree", FeatureSource.USER, 16, min_freq=10, use_oov=True),
         SparseEmbSetting("is_live_streamer", FeatureSource.USER, 16, min_freq=10, use_oov=True),
@@ -110,8 +160,9 @@ if __name__ == '__main__':
             is_string_format=True, separator=",", min_freq=10, use_oov=True
         ),
     ]
-
-    manager = SchemaManager(settings_list, "kuairand-workdir", time_field="time_ms", label_fields="is_click", domain_fields="tab")
+    from betterbole.experiment import preset_workdir
+    WORKDIR = preset_workdir("kuairand")
+    manager = SchemaManager(settings_list, WORKDIR, time_field="time_ms", label_fields="is_click", domain_fields="tab")
     from betterbole.datasets.kuairand import KuaiRandDataset
 
     user_lf = pl.scan_csv(KuaiRandDataset.USER_FEATURES)
@@ -154,20 +205,25 @@ if __name__ == '__main__':
     train_path, valid_path, _ = manager.save_as_dataset(train_lf, valid_lf, test_lf)
     print("架构编译成功，可供调用。")
 
-    evaluator = LogDecorator(Evaluator("AUC"), save_path=manager.work_dir / "logs.log", title=Backbone.__name__)
+    evaluator = LogDecorator(Evaluator("auc"), save_path=manager.work_dir / "logs.log", title=Backbone.__name__)
     from betterbole.emb.emblayer import InterSideEmb, UserSideEmb, ItemSideEmb
 
     ps_dataset = ParquetStreamDataset(train_path, manager.fields()) # 更少的读取
     ps_valid = ParquetStreamDataset(valid_path, manager.fields(), batch_size=4096 * 2, shuffle=False) # 不能被shuffle
 
-    from betterbole.utils.time import CudaNamedTimer
+    from betterbole.utils import CudaNamedTimer
     ntr = CudaNamedTimer()
-    model = SimplePLE(manager).to(device)
-    named_parameters = create_optimizer_groups(model, weight_decay=1e-6, no_decay_keywords=["embedding"])
-    optimizer = torch.optim.Adam(named_parameters, lr=1e-3)
+    model = M3oE(manager).to(device)
+    arch_params, base_params = model.param_groups
+    arch_params_list = split_params_by_decay(arch_params, weight_decay=1e-6, no_decay_keywords=["embedding"])
+    base_params_list = split_params_by_decay(base_params, weight_decay=1e-6, no_decay_keywords=["embedding"])
+
+    optimizer_arch = torch.optim.Adam(arch_params_list, lr=1e-4)
+    optimizer_base = torch.optim.Adam(base_params, lr=1e-3)
 
      # 良好的习惯：开启训练模式
     print("开始训练")
+    global_step = 0
     for epoch in range(20):
         total_loss = 0.
         batch_count = 0
@@ -176,18 +232,26 @@ if __name__ == '__main__':
             for batch_interaction in ps_dataset:
                 # 1. 采样：获取负样本
                 # 确保传入的是 numpy，且返回后立刻转为 long 并送到指定的 device
+                global_step += 1
+
                 with ntr("prepare"):
                     uids = batch_interaction[manager.uid_field]
                     # sampled_neg = puis.sample_by_key_ids(uids.numpy(), 1)
                     # batch_interaction[model.neg_sample] = sampled_neg.view(-1)
                     batch_interaction = batch_interaction.to(device)
 
-                # 4. 前向传播与优化
-                with ntr("train"):
-                    optimizer.zero_grad()
+                if global_step % 1000 == 0:
+                    optimizer_arch.zero_grad()
                     loss = model.calculate_loss(batch_interaction)
                     loss.backward()
-                    optimizer.step()
+                    optimizer_arch.step()
+
+                # 4. 前向传播与优化
+                with ntr("train"):
+                    optimizer_base.zero_grad()
+                    loss = model.calculate_loss(batch_interaction)
+                    loss.backward()
+                    optimizer_base.step()
 
                 # 5. 累加损失（必须用 .item() 否则会 OOM）
                 with ntr("add_loss"):

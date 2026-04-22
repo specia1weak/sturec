@@ -112,7 +112,7 @@ class TopKEvaluator(BaseEvaluator):
 
 import polars as pl
 class Evaluator:
-    def __init__(self, *metrics: Literal['auc', 'logloss', 'gauc', 'HR@*', 'NDCG@*'], history_dict=None):
+    def __init__(self, *metrics: Literal["auc", "logloss", "gauc", "HR@*", "NDCG@*"], history_dict=None):
         """
         metrics: list of str, 例如 ['auc', 'logloss', 'hit@10', 'ndcg@20']
         history_dict: dict, TopK 评估必须传入的静态历史黑名单

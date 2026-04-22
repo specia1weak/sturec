@@ -10,7 +10,7 @@ import torch
 
 from betterbole.models.generative.diffusion.diffusions import CDCDRMlpDiffusion
 from betterbole.models.generative.diffusion.schedulers import DDIMScheduler
-from betterbole.utils import change_root_workdir
+from betterbole.experiment import change_root_workdir
 
 from expmodel import DomainClassifier
 from exptools import (

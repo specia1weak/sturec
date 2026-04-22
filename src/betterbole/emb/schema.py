@@ -151,11 +151,16 @@ class SparseEmbSetting(EmbSetting):
         self._build_vocab_indices(valid_vals)
 
     def get_transform_expr(self):
+        replace_kwargs = (
+            {"default": pl.lit(self.oov_idx, dtype=pl.UInt32)}
+            if self.oov_idx >= 0
+            else {}
+        )
         return (
             pl.col(self.field_name)
             .fill_null("NULL_FALLBACK")
             .cast(pl.Utf8)
-            .replace_strict(self.vocab, default=pl.lit(self.oov_idx, dtype=pl.UInt32))
+            .replace_strict(self.vocab, **replace_kwargs)
             .cast(pl.UInt32)
             .alias(self.field_name)
         )

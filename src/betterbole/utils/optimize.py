@@ -1,49 +1,31 @@
 import torch
 import torch.nn as nn
-from typing import List, Dict, Any, Union
+from typing import List, Dict, Any, Union, Iterable, Tuple
 
-
-def create_optimizer_groups(
-        model: nn.Module,
+def split_params_by_decay(
+        named_params: Iterable[Tuple[str, nn.Parameter]],  # 修改这里
         weight_decay: float = 0.01,
         no_decay_keywords: Union[tuple, list] = ("embedding", "position_ids")
 ) -> List[Dict[str, Any]]:
     """
     基于张量维度和关键字自动分组优化器参数。
-
-    设计逻辑：
-    1. ndim < 2 的参数（Bias, LayerNorm/BatchNorm的weight）自动不应用衰减。
-    2. 包含在 no_decay_keywords 中的参数（如 Embedding）不应用衰减。
-    3. 其他参数正常应用衰减。
     """
     decay_params = []
     no_decay_params = []
 
-    # 记录分类以便调试或日志打印
-    decay_names = []
-    no_decay_names = []
-
-    for name, param in model.named_parameters():
+    for name, param in named_params: # 修改这里
         if not param.requires_grad:
             continue
 
-        # 核心判断逻辑
         if param.ndim < 2 or any(nd in name.lower() for nd in no_decay_keywords):
             no_decay_params.append(param)
-            no_decay_names.append(name)
         else:
             decay_params.append(param)
-            decay_names.append(name)
-
-    # 你可以把 print 替换为 logging
-    print(f"[Optimizer Grouping] Decay Params ({len(decay_names)}): {decay_names[:3]}...")
-    print(f"[Optimizer Grouping] No-Decay Params ({len(no_decay_names)}): {no_decay_names[:3]}...")
 
     return [
         {"params": decay_params, "weight_decay": weight_decay},
         {"params": no_decay_params, "weight_decay": 0.0}
     ]
-
 
 def create_complex_optimizer_groups(
         model: nn.Module,
