@@ -1,6 +1,13 @@
+import time
+from dataclasses import dataclass
+from typing import Iterable, Any
+
 import torch
+import random
+import numpy as np
 
 from betterbole.data.dataset import ParquetStreamDataset
+from betterbole.emb.emblayer import UserSideEmb, InterSideEmb, ItemSideEmb
 from betterbole.emb.schema import SparseEmbSetting, SparseSetEmbSetting
 from betterbole.emb import SchemaManager
 import polars as pl
@@ -9,18 +16,56 @@ from betterbole.evaluate.evaluator import Evaluator, LogDecorator
 
 from torch import nn
 
-from betterbole.models.msr import M3oEBackbone
+from betterbole.experiment.param import ConfigBase, ParamManager
+from betterbole.models.msr import M3oEBackbone, M3oEVersion2Backbone, MSRBackbone, PLEBackbone, STARBackbone
+from betterbole.models.utils.container import MultiScenarioContainer
+from betterbole.models.utils.general import ModuleFactory
 from betterbole.utils.optimize import split_params_by_decay
 from betterbole.models.backbone.ple import PLE
 from betterbole.experiment import change_root_workdir
 
 change_root_workdir()
-Backbone = PLE
-ID_EMB = 32
 
-class SimplePLE(nn.Module):
+@dataclass
+class KuairandConfig(ConfigBase):
+    experiment_name: str = "kuairand-simple"
+    dataset_name: str = "kuairand"
+    seed: int = 2026
+    device: str = "cuda"
+
+    backbone: MSRBackbone = M3oEBackbone
+    m3oe_star_dims: Iterable = (512, 256)
+    m3oe_expert_dims: Iterable = (64,)
+    m3oe_expert_num: int = 4
+    id_emb: int = 32
+    shuffle_buffer_size: int = 100000
+
+pm = ParamManager(KuairandConfig)
+pm.register(
+    "backbone", {
+        "m3oe": M3oEBackbone,
+        "ple": PLEBackbone,
+        "star": STARBackbone
+    }
+)
+cfg: KuairandConfig = pm.build(
+    backbone="ple"
+)
+print(cfg)
+time.sleep(2)
+
+def build_m3oe_tower(in_dim: int):
+    return lambda: nn.Sequential(
+        nn.Linear(in_dim, in_dim),
+        nn.LayerNorm(in_dim),
+        nn.ReLU(),
+        nn.Linear(in_dim, 1),
+    )
+
+
+class Model(nn.Module):
     def __init__(self, schema_manager: SchemaManager):
-        super(SimplePLE, self).__init__()
+        super(Model, self).__init__()
         manager = schema_manager
         self.user_emb_layer = UserSideEmb(manager.settings)
         self.item_emb_layer = ItemSideEmb(manager.settings)
@@ -33,7 +78,8 @@ class SimplePLE(nn.Module):
         print(f"输入总维度{self.input_dim}")
         self.DOMAIN = manager.domain_field
         num_domains = manager.get_setting(self.DOMAIN).vocab_size
-        self.ple = Backbone(self.input_dim, num_domains, expert_dims=(256, 128))
+        self.backbone = cfg.backbone(self.input_dim, num_domains, expert_dims=(256, 128))
+        self.head = MultiScenarioContainer(num_domains, ModuleFactory.build_tower(128))
         self.LABEL = manager.label_field
 
     def concat_embed_input_fields(self, interaction):
@@ -43,80 +89,137 @@ class SimplePLE(nn.Module):
         return torch.cat([user_emb, item_emb, inter_emb], dim=-1)
 
     def forward(self, x, domain_ids):
-        return self.ple.forward(x, domain_ids)
+        return self.head.forward(self.backbone.forward(x, domain_ids), domain_ids).squeeze(-1)
 
     def predict(self, interaction):
         x = self.concat_embed_input_fields(interaction)
-        domain_ids = interaction[self.DOMAIN] - 1
+        domain_ids = interaction[self.DOMAIN]
         x = torch.flatten(x, start_dim=1)
         final_logits = self.forward(x, domain_ids)
         return torch.sigmoid(final_logits)
 
     def calculate_loss(self, interaction):
         labels = interaction[self.LABEL].float()
-        domain_ids = interaction[self.DOMAIN] - 1
+        domain_ids = interaction[self.DOMAIN]
         x = self.concat_embed_input_fields(interaction)
         x = torch.flatten(x, start_dim=1)
         final_logits = self.forward(x, domain_ids)
         loss = nn.functional.binary_cross_entropy_with_logits(final_logits, labels)
         return loss
 
+#789537121234984   1000 都锁
+#7892546954781408  100 都锁
+#7892996929591591  1000-不要gate
+#7891              1000 都锁
+#7897953494286142
+# class M3oE(nn.Module):
+#     def __init__(self, schema_manager: SchemaManager):
+#         super(M3oE, self).__init__()
+#         manager = schema_manager
+#         self.user_emb_layer = UserSideEmb(manager.settings)
+#         self.item_emb_layer = ItemSideEmb(manager.settings)
+#         self.inter_emb_layer = InterSideEmb(manager.settings)
+#
+#         self.manager = manager
+#         self.input_dim = manager.source2emb_size(FeatureSource.USER_ID, FeatureSource.USER,
+#                                                  FeatureSource.ITEM_ID, FeatureSource.ITEM,
+#                                                  FeatureSource.INTERACTION)
+#         print(f"输入总维度{self.input_dim}")
+#         self.DOMAIN = manager.domain_field
+#         num_domains = manager.get_setting(self.DOMAIN).vocab_size
+#         self.num_domains = num_domains
+#         self.m3oe = M3OE_BACKBONE(
+#             self.input_dim,
+#             num_domains,
+#             star_dims=M3OE_STAR_DIMS,
+#             expert_dims=M3OE_EXPERT_DIMS,
+#             num_shared_experts=M3OE_EXPERT_NUM,
+#         )
+#         self.head = MultiScenarioContainer(num_domains, build_m3oe_tower(self.m3oe.output_dim))
+#         self.m3oe.get_parameter_groups()
+#         self.LABEL = manager.label_field
+#
+#     @property
+#     def param_groups(self):
+#         """
+#         在顶层直接划分所有参数。
+#         这样既包含了 Emb、M3oE 和 Head，又保持了 (name, param) 的格式供后续正则化工具使用。
+#         """
+#         arch_named_params = []
+#         base_named_params = []
+#         for name, param in self.named_parameters():
+#             if 'balance_factor' in name or 'balance_gate' in name:
+#                 arch_named_params.append((name, param))
+#             else:
+#                 base_named_params.append((name, param))
+#         return arch_named_params, base_named_params
+#
+#     def get_domain_ids(self, interaction):
+#         return interaction[self.DOMAIN].long()
+#
+#     def concat_embed_input_fields(self, interaction):
+#         user_emb = self.user_emb_layer.forward(interaction)
+#         item_emb = self.item_emb_layer.forward(interaction)
+#         inter_emb = self.inter_emb_layer.forward(interaction)
+#         return torch.cat([user_emb, item_emb, inter_emb], dim=-1)
+#
+#     def forward(self, x, domain_ids):
+#         x = self.m3oe.forward(x, domain_ids)
+#         return self.head.forward(x, domain_ids).squeeze(-1)
+#
+#     def predict(self, interaction):
+#         x = self.concat_embed_input_fields(interaction)
+#         domain_ids = self.get_domain_ids(interaction)
+#         x = torch.flatten(x, start_dim=1)
+#         final_logits = self.forward(x, domain_ids)
+#         return torch.sigmoid(final_logits)
+#
+#     def calculate_loss(self, interaction):
+#         labels = interaction[self.LABEL].float()
+#         domain_ids = self.get_domain_ids(interaction)
+#         x = self.concat_embed_input_fields(interaction)
+#         x = torch.flatten(x, start_dim=1)
+#         final_logits = self.forward(x, domain_ids)
+#         loss = nn.functional.binary_cross_entropy_with_logits(final_logits, labels)
+#         return loss
+#
 
-class M3oE(nn.Module):
-    def __init__(self, schema_manager: SchemaManager):
-        super(M3oE, self).__init__()
-        manager = schema_manager
-        self.user_emb_layer = UserSideEmb(manager.settings)
-        self.item_emb_layer = ItemSideEmb(manager.settings)
-        self.inter_emb_layer = InterSideEmb(manager.settings)
+# def _format_factor_values(factor_module):
+#     if factor_module is None or not hasattr(factor_module, "balance_factor"):
+#         return None
+#
+#     raw_factor = factor_module.balance_factor
+#     if isinstance(raw_factor, nn.Embedding):
+#         values = torch.sigmoid(raw_factor.weight.detach()).view(-1).cpu().tolist()
+#         return [round(v, 4) for v in values]
+#
+#     values = torch.sigmoid(raw_factor.detach()).view(-1).cpu().tolist()
+#     if len(values) == 1:
+#         return round(values[0], 4)
+#     return [round(v, 4) for v in values]
+#
+#
+# def print_m3oe_factors(model):
+#     backbone = getattr(model, "m3oe", None)
+#     if backbone is None:
+#         return
+#
+#     alpha_values = _format_factor_values(getattr(backbone, "domain_expert_factor", None))
+#     beta_values = _format_factor_values(getattr(backbone, "domain_balance_factor", None))
+#     print(f"[M3oE Factors] exp_d={alpha_values} bal_d={beta_values}")
 
-        self.manager = manager
-        self.input_dim = manager.source2emb_size(FeatureSource.USER_ID, FeatureSource.USER,
-                                                 FeatureSource.ITEM_ID, FeatureSource.ITEM,
-                                                 FeatureSource.INTERACTION)
-        print(f"输入总维度{self.input_dim}")
-        self.DOMAIN = manager.domain_field
-        num_domains = manager.get_setting(self.DOMAIN).vocab_size
-        self.m3oe = M3oEBackbone(self.input_dim, num_domains)
-        self.m3oe.get_parameter_groups()
-        self.LABEL = manager.label_field
 
-    @property
-    def param_groups(self):
-        return self.m3oe.get_parameter_groups()
+def set_named_params_requires_grad(named_params, requires_grad: bool):
+    for _, param in named_params:
+        param.requires_grad_(requires_grad)
 
-    def concat_embed_input_fields(self, interaction):
-        user_emb = self.user_emb_layer.forward(interaction)
-        item_emb = self.item_emb_layer.forward(interaction)
-        inter_emb = self.inter_emb_layer.forward(interaction)
-        return torch.cat([user_emb, item_emb, inter_emb], dim=-1)
-
-    def forward(self, x, domain_ids):
-        return self.ple.forward(x, domain_ids)
-
-    def predict(self, interaction):
-        x = self.concat_embed_input_fields(interaction)
-        domain_ids = interaction[self.DOMAIN] - 1
-        x = torch.flatten(x, start_dim=1)
-        final_logits = self.forward(x, domain_ids)
-        return torch.sigmoid(final_logits)
-
-    def calculate_loss(self, interaction):
-        labels = interaction[self.LABEL].float()
-        domain_ids = interaction[self.DOMAIN] - 1
-        x = self.concat_embed_input_fields(interaction)
-        x = torch.flatten(x, start_dim=1)
-        final_logits = self.forward(x, domain_ids)
-        loss = nn.functional.binary_cross_entropy_with_logits(final_logits, labels)
-        return loss
 
 if __name__ == '__main__':
-    from betterbole.utils import auto_queue
+    from betterbole.utils.task_chain import auto_queue
     auto_queue()
-    device = "cuda"
 
-    user_setting = SparseEmbSetting("user_id", FeatureSource.USER_ID, ID_EMB, min_freq=10, use_oov=True)
-    item_setting = SparseEmbSetting("video_id", FeatureSource.ITEM_ID, ID_EMB, min_freq=10, use_oov=True)
+    user_setting = SparseEmbSetting("user_id", FeatureSource.USER_ID, cfg.id_emb, min_freq=10, use_oov=True)
+    item_setting = SparseEmbSetting("video_id", FeatureSource.ITEM_ID, cfg.id_emb, min_freq=10, use_oov=True)
     settings_list = [
         user_setting,
         item_setting,
@@ -149,8 +252,8 @@ if __name__ == '__main__':
         SparseEmbSetting("onehot_feat16", FeatureSource.USER, 16, min_freq=10, use_oov=True),
         SparseEmbSetting("onehot_feat17", FeatureSource.USER, 16, min_freq=10, use_oov=True),
 
-        SparseEmbSetting("author_id", FeatureSource.ITEM, ID_EMB, min_freq=10, use_oov=True),
-        SparseEmbSetting("music_id", FeatureSource.ITEM, ID_EMB, min_freq=10, use_oov=True),
+        SparseEmbSetting("author_id", FeatureSource.ITEM, cfg.id_emb, min_freq=10, use_oov=True),
+        SparseEmbSetting("music_id", FeatureSource.ITEM, cfg.id_emb, min_freq=10, use_oov=True),
         SparseEmbSetting("video_type", FeatureSource.ITEM, 16, min_freq=10, use_oov=True),
         SparseEmbSetting("music_type", FeatureSource.ITEM, 16, min_freq=10, use_oov=True),
         SparseEmbSetting("visible_status", FeatureSource.ITEM, 16, min_freq=10, use_oov=True),
@@ -161,7 +264,7 @@ if __name__ == '__main__':
         ),
     ]
     from betterbole.experiment import preset_workdir
-    WORKDIR = preset_workdir("kuairand")
+    WORKDIR = preset_workdir(cfg.dataset_name)
     manager = SchemaManager(settings_list, WORKDIR, time_field="time_ms", label_fields="is_click", domain_fields="tab")
     from betterbole.datasets.kuairand import KuaiRandDataset
 
@@ -188,7 +291,7 @@ if __name__ == '__main__':
         parsed_date.dt.weekday().is_in([6, 7]).cast(pl.UInt8).alias("is_weekend"),
         (pl.col("hourmin").cast(pl.Int32) // 100).cast(pl.UInt8).alias("hour")
     )
-    # ========================
+
     ## 处理中
     train_raw = whole_lf.filter(pl.col("date") <= 20220506)
     valid_raw = whole_lf.filter(pl.col("date") == 20220507)  # 仅用 20220507
@@ -205,74 +308,49 @@ if __name__ == '__main__':
     train_path, valid_path, _ = manager.save_as_dataset(train_lf, valid_lf, test_lf)
     print("架构编译成功，可供调用。")
 
-    evaluator = LogDecorator(Evaluator("auc"), save_path=manager.work_dir / "logs.log", title=Backbone.__name__)
-    from betterbole.emb.emblayer import InterSideEmb, UserSideEmb, ItemSideEmb
 
-    ps_dataset = ParquetStreamDataset(train_path, manager.fields()) # 更少的读取
+    # ======================== 数据处理完成 ======================== #
+
+
+    evaluator = LogDecorator(Evaluator("auc"), save_path=manager.work_dir / "logs.log", title=cfg.experiment_name)
+    ps_dataset = ParquetStreamDataset(train_path, manager.fields(), shuffle=True, shuffle_buffer_size=cfg.shuffle_buffer_size) # 更少的读取
     ps_valid = ParquetStreamDataset(valid_path, manager.fields(), batch_size=4096 * 2, shuffle=False) # 不能被shuffle
 
-    from betterbole.utils import CudaNamedTimer
+    from betterbole.utils.time import CudaNamedTimer
     ntr = CudaNamedTimer()
-    model = M3oE(manager).to(device)
-    arch_params, base_params = model.param_groups
-    arch_params_list = split_params_by_decay(arch_params, weight_decay=1e-6, no_decay_keywords=["embedding"])
-    base_params_list = split_params_by_decay(base_params, weight_decay=1e-6, no_decay_keywords=["embedding"])
+    model = Model(manager).to(cfg.device)
 
-    optimizer_arch = torch.optim.Adam(arch_params_list, lr=1e-4)
-    optimizer_base = torch.optim.Adam(base_params, lr=1e-3)
+    params = split_params_by_decay(model.named_parameters(), weight_decay=1e-5, no_decay_keywords=["embedding"])
+    optimizer = torch.optim.Adam(params, lr=1e-3)
 
-     # 良好的习惯：开启训练模式
-    print("开始训练")
     global_step = 0
-    for epoch in range(20):
+    for epoch in range(1):
         total_loss = 0.
         batch_count = 0
         model.train()
         with ntr("epoch"):
             for batch_interaction in ps_dataset:
-                # 1. 采样：获取负样本
-                # 确保传入的是 numpy，且返回后立刻转为 long 并送到指定的 device
                 global_step += 1
-
-                with ntr("prepare"):
-                    uids = batch_interaction[manager.uid_field]
-                    # sampled_neg = puis.sample_by_key_ids(uids.numpy(), 1)
-                    # batch_interaction[model.neg_sample] = sampled_neg.view(-1)
-                    batch_interaction = batch_interaction.to(device)
-
-                if global_step % 1000 == 0:
-                    optimizer_arch.zero_grad()
-                    loss = model.calculate_loss(batch_interaction)
-                    loss.backward()
-                    optimizer_arch.step()
-
-                # 4. 前向传播与优化
+                uids = batch_interaction[manager.uid_field]
+                batch_interaction = batch_interaction.to(cfg.device)
                 with ntr("train"):
-                    optimizer_base.zero_grad()
+                    optimizer.zero_grad(set_to_none=True)
                     loss = model.calculate_loss(batch_interaction)
                     loss.backward()
-                    optimizer_base.step()
-
-                # 5. 累加损失（必须用 .item() 否则会 OOM）
-                with ntr("add_loss"):
-                    total_loss += loss.item()
-
+                    optimizer.step()
+                total_loss += loss.item()
                 batch_count += 1
-                if batch_count % 100 == 0:
+
+                if batch_count % 200 == 0:
                     ntr.report()
                     print(f"Epoch {epoch}, Batch {batch_count}, Current Loss: {loss.item():.4f}")
 
         model.eval()
         with torch.no_grad():
             for batch_interaction in ps_valid:
-                # 1. 先整体推到 GPU
-                batch_interaction = batch_interaction.to(device)
-
-                # 2. 干净地取出 GPU 上的特征
+                batch_interaction = batch_interaction.to(cfg.device)
                 uids = batch_interaction[manager.uid_field]
                 labels = batch_interaction[manager.label_field]
-
-                # 3. 预测并打分
                 scores = model.predict(batch_interaction)
                 evaluator.collect_pointwise(uids, labels, batch_preds_1d=scores)
 
@@ -280,4 +358,3 @@ if __name__ == '__main__':
         print(f"Validation Metrics: {metrics_result}")
         evaluator.clear()
         ntr.report()
-        # print(f"=== Epoch {epoch} Done, Average Loss: {total_loss / batch_count:.4f} ===")

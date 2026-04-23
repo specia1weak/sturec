@@ -2,7 +2,7 @@ from betterbole.models.msr.backbone.base import MSRBackbone
 from betterbole.models.msr.backbone.epnet import EPNetBackbone, create_epnet
 from betterbole.models.msr.backbone.factory import build_backbone
 from betterbole.models.msr.backbone.m2m import M2MBackbone, create_m2m
-from betterbole.models.msr.backbone.m3oe import M3oEBackbone, create_m3oe
+from betterbole.models.msr.backbone.m3oe import M3oEBackbone, M3oEVersion1Backbone, M3oEVersion2Backbone, create_m3oe
 from betterbole.models.msr.backbone.mmoe import MMoEBackbone, create_mmoe
 from betterbole.models.msr.backbone.ple import PLEBackbone, create_ple
 from betterbole.models.msr.backbone.ppnet import PPNetBackbone, create_ppnet
@@ -19,6 +19,8 @@ __all__ = [
     "EPNetBackbone",
     "PPNetBackbone",
     "M3oEBackbone",
+    "M3oEVersion1Backbone",
+    "M3oEVersion2Backbone",
     "build_backbone",
     "create_sharedbottom",
     "create_mmoe",
