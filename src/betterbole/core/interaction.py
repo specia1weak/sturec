@@ -202,7 +202,7 @@ class Interaction(object):
         """Transfer Tensors in this Interaction object to the specified device.
 
         Args:
-            device (torch.device): target device.
+            device (torch.device), str: target device.
             selected_field (str or iterable object, optional): if specified, only Tensors
             with keys in selected_field will be sent to device.
 

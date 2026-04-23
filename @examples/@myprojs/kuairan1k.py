@@ -33,12 +33,14 @@ class KuairandConfig(ConfigBase):
     seed: int = 2026
     device: str = "cuda"
 
+    batch_size: int = 4096 * 10
     backbone: MSRBackbone = M3oEBackbone
     m3oe_star_dims: Iterable = (512, 256)
     m3oe_expert_dims: Iterable = (64,)
     m3oe_expert_num: int = 4
+    m3oe_factor_update_step: int = 20
     id_emb: int = 32
-    shuffle_buffer_size: int = 100000
+    shuffle_buffer_size: int = 2000000
 
 pm = ParamManager(KuairandConfig)
 pm.register(
@@ -96,7 +98,7 @@ class Model(nn.Module):
         domain_ids = interaction[self.DOMAIN]
         x = torch.flatten(x, start_dim=1)
         final_logits = self.forward(x, domain_ids)
-        return torch.sigmoid(final_logits)
+        return final_logits
 
     def calculate_loss(self, interaction):
         labels = interaction[self.LABEL].float()
@@ -313,7 +315,7 @@ if __name__ == '__main__':
 
 
     evaluator = LogDecorator(Evaluator("auc"), save_path=manager.work_dir / "logs.log", title=cfg.experiment_name)
-    ps_dataset = ParquetStreamDataset(train_path, manager.fields(), shuffle=True, shuffle_buffer_size=cfg.shuffle_buffer_size) # 更少的读取
+    ps_dataset = ParquetStreamDataset(train_path, manager.fields(), batch_size=cfg.batch_size, shuffle=True, shuffle_buffer_size=cfg.shuffle_buffer_size) # 更少的读取
     ps_valid = ParquetStreamDataset(valid_path, manager.fields(), batch_size=4096 * 2, shuffle=False) # 不能被shuffle
 
     from betterbole.utils.time import CudaNamedTimer
