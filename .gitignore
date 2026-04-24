@@ -103,6 +103,7 @@ docker-compose.override.yml
 *.user
 *.png
 *.jpg
+*.parquet
 
 # 2. RecBole 默认输出目录（可酌情保留空目录）
 /dataset/
