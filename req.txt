@@ -47,7 +47,7 @@ tensorboard-data-server==0.7.2
 texttable==1.7.0
 thop==0.1.1.post2209072238
 threadpoolctl==3.6.0
-torch @ file:///D:/pyprojects/resouces/pytorch4py39/torch-2.0.1%2Bcu118-cp39-cp39-win_amd64.whl#sha256=fa225b6f941ee0e78978ac85ed7744d3c19fff462473821f8060c14faa60043e
+torch==2.0.1+cu118
 torchaudio==2.0.2+cu118
 torchvision==0.15.2+cu118
 tqdm==4.67.1

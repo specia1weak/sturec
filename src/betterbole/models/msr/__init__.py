@@ -6,7 +6,7 @@ from betterbole.emb import SchemaManager
 from betterbole.emb.emblayer import UserSideEmb, ItemSideEmb, InterSideEmb
 from betterbole.experiment.param import ConfigBase
 from betterbole.experiment.train.context import TrainContext
-from betterbole.experiment.train.trainer import ICustomTrainStep
+from betterbole.experiment.train.trainer import CustomTrainStepProtocol
 from betterbole.models.base import BaseModel
 from betterbole.models.msr.backbone import (
     MSRBackbone, PLEBackbone, STARBackbone, SharedBottomBackbone, M3oEBackbone, M3oEVersion1Backbone,
@@ -17,24 +17,22 @@ from betterbole.models.utils.general import ModuleFactory
 
 import torch
 from torch import nn
-class ModelConfig(ConfigBase):
-    backbone: MSRBackbone
 
 class MSRModel(BaseModel):
-    def __init__(self, schema_manager: SchemaManager, cfg: ModelConfig):
+    def __init__(self, schema_manager: SchemaManager, backbone: MSRBackbone):
         super().__init__()
         self.manager = schema_manager
+        self.cfg = cfg
         sm = schema_manager
         self.user_emb_layer = UserSideEmb(sm.settings)
         self.item_emb_layer = ItemSideEmb(sm.settings)
         self.inter_emb_layer = InterSideEmb(sm.settings)
-
         self.input_dim = sm.source2emb_size(FeatureSource.USER_ID, FeatureSource.USER,
                                                  FeatureSource.ITEM_ID, FeatureSource.ITEM,
                                                  FeatureSource.INTERACTION)
         self.DOMAIN = sm.domain_field
         num_domains = sm.get_setting(self.DOMAIN).vocab_size
-        self.backbone: MSRBackbone = cfg.backbone(self.input_dim, num_domains)
+        self.backbone: MSRBackbone = backbone(self.input_dim, num_domains)
         self.head = MultiScenarioContainer(num_domains, ModuleFactory.build_tower(self.backbone.output_dim))
         self.LABEL = sm.label_field
 
@@ -64,11 +62,9 @@ class MSRModel(BaseModel):
         return loss
 
 
-class M3oEModel(ICustomTrainStep, MSRModel):
-    def __init__(self, schema_manager: SchemaManager, cfg: ModelConfig):
-        super().__init__(schema_manager, cfg)
-        self.optimizer_base = torch.optim.Adam([p for name, p in self.named_parameters() if "balance" not in name], lr=1e-3)
-        self.optimizer_arch = torch.optim.Adam([p for name, p in self.named_parameters() if "balance" in name], lr=1e-4)
+class M3oEModel(MSRModel, CustomTrainStepProtocol):
+    def __init__(self, schema_manager: SchemaManager, backbone: MSRBackbone):
+        super().__init__(schema_manager, backbone)
 
     def custom_train_step(self, batch_interaction, ctx: TrainContext):
         loss = self.calculate_loss(batch_interaction)
@@ -82,10 +78,8 @@ class M3oEModel(ICustomTrainStep, MSRModel):
             self.optimizer_arch.step()
         self.optimizer_base.step()
 
-
-
-NAME2MODEL = {
-
-}
-
-M3oEModel()
+def build_model(schema_manager: SchemaManager, backbone: MSRBackbone):
+    if isinstance(backbone, M3oEBackbone):
+        return M3oEModel(schema_manager, backbone)
+    else:
+        return MSRModel(schema_manager, backbone)

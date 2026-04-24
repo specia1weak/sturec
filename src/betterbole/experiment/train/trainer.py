@@ -1,5 +1,6 @@
 import abc
 from abc import abstractmethod
+from typing import Protocol, runtime_checkable
 
 from betterbole.core.interaction import Interaction
 from betterbole.emb import SchemaManager
@@ -9,11 +10,10 @@ import torch
 
 from betterbole.models.base import BaseModel
 
-
-class ICustomTrainStep(abc.ABC):
-    @abstractmethod
+@runtime_checkable
+class CustomTrainStepProtocol(Protocol):
     def custom_train_step(self, batch_interaction, ctx: TrainContext):
-        raise NotImplementedError("继承了 ICustomTrainStep 就必须实现此方法！")
+        ...
 
 class BaseTrainer:
     def __init__(self,
@@ -68,7 +68,7 @@ class BaseTrainer:
                 timer=self.timer
             )
 
-            if isinstance(self.model, ICustomTrainStep):
+            if isinstance(self.model, CustomTrainStepProtocol):
                 self.model.custom_train_step(batch_interaction, ctx)
             else:
                 self.default_train_step(batch_interaction, ctx)
@@ -102,20 +102,19 @@ class BaseTrainer:
 
 
 
-class TestModel(BaseModel, ICustomTrainStep):
+class TestModel(BaseModel):
     def __init__(self):
         super().__init__()
 
-    def calculate_loss(self, interaction: Interaction):
-        return torch.tensor(0.)
-
     def predict(self, interaction: Interaction):
-        B = len(interaction)
-        return torch.ones(B)
+        pass
+
+    def calculate_loss(self, interaction: Interaction):
+        pass
 
     def custom_train_step(self, interaction: Interaction, ctx: TrainContext):
         return
 
 
 if __name__ == '__main__':
-    pass
+    print(isinstance(TestModel(), CustomTrainStepProtocol))
