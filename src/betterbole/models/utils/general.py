@@ -1,5 +1,5 @@
 from typing import List, Iterable
-
+import torch
 from torch import nn
 
 from betterbole.models.utils.activation import activation_layer
@@ -32,13 +32,13 @@ class DNN(nn.Module):
             deep_input = fc
         return deep_input
 
-class MLP(nn.Module):
-    def __init__(self, *dims, dropout_rate: float = 0.0, activation:str = 'relu', batch_norm=False):
-        super().__init__()
-        self.net = DNN(dims[0], dims[1:], activation, dropout_rate=dropout_rate, use_bn=batch_norm)
-
-    def forward(self, x):
-        return self.net(x)
+# class MLP(nn.Module):
+#     def __init__(self, *dims, dropout_rate: float = 0.0, activation:str = 'relu', batch_norm=False):
+#         super().__init__()
+#         self.net = DNN(dims[0], dims[1:], activation, dropout_rate=dropout_rate, use_bn=batch_norm)
+#
+#     def forward(self, x):
+#         return self.net(x)
 
 
 class MLP(nn.Module):
@@ -93,6 +93,75 @@ class MLP(nn.Module):
     def forward(self, x):
         return self.net(x)
 
+class BifurcatedLinear(nn.Module):
+    def __init__(self, input_dim, output_dim, zero_mean_dim='batch'):
+        """
+        :param input_dim: 输入特征维度
+        :param output_dim: 输出特征维度
+        :param zero_mean_dim: 'feature' (对每个样本的特征向量求0均值)
+                           或 'batch' (对Batch内的特定特征位求0均值)
+        """
+        super().__init__()
+        self.output_dim = output_dim
+        self.zero_mean_dim = zero_mean_dim
+        self.linear = nn.Linear(input_dim, output_dim, bias=False)
+
+        # 定义 0 均值化的方法 (关闭 affine 避免模型偷偷把非零均值学回来)
+        if self.zero_mean_dim == 'feature':
+            self.zero_mean_norm = nn.LayerNorm(output_dim, elementwise_affine=False)
+        elif self.zero_mean_dim == 'batch':
+            self.zero_mean_norm = nn.BatchNorm1d(output_dim, affine=False)
+        else:
+            raise ValueError("zero_mean_dim must be 'feature' or 'batch'")
+        self.bias = nn.Parameter(torch.zeros(output_dim))
+
+    def forward(self, x):
+        batch_size = x.size(0)
+        raw_fluctuation = self.linear(x)
+        fluctuation = self.zero_mean_norm(raw_fluctuation)  # shape: [Batch, OutputDim]
+        bias_expanded = self.bias.unsqueeze(0).expand(batch_size, -1)
+        output = torch.stack([bias_expanded, fluctuation], dim=1)
+        return output
+
+class BifurcatedMLP(nn.Module):
+    def __init__(self, *dims, dropout_rate: float = 0.0, activation: str = 'relu', batch_norm: bool = False):
+        super().__init__()
+        if len(dims) < 2:
+            raise ValueError("MLP 至少需要输入维度和输出维度，例如 MLP(256, 128)")
+        layers = []
+
+        # 2. 遍历构建不包括最后一层的网络层
+        for i in range(len(dims) - 1):
+            is_last_layer = (i == len(dims) - 2)
+            if not is_last_layer:
+                layers.append(nn.Linear(dims[i], dims[i + 1]))
+                if batch_norm:
+                    layers.append(nn.BatchNorm1d(dims[i + 1]))
+                layers.append(activation_layer(activation))
+                if dropout_rate > 0.0:
+                    layers.append(nn.Dropout(dropout_rate))
+
+        self.hidden_net = nn.Sequential(*layers)
+        self.last_layer = BifurcatedLinear(dims[-2], dims[-1])
+        self._init_weights(activation)
+
+    @property
+    def bias(self):
+        return self.last_layer.bias
+
+    def _init_weights(self, activation):
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                if activation.lower() in ['relu', 'prelu']:
+                    nn.init.kaiming_normal_(m.weight, mode='fan_in', nonlinearity='relu')
+                else:
+                    nn.init.xavier_normal_(m.weight)
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
+
+    def forward(self, x):
+        return self.last_layer(self.hidden_net(x))
+
 class ModuleFactory:
     @staticmethod
     def build_expert(in_dim: int, hidout_dims=None, dropout_rate=0.1):
@@ -122,3 +191,77 @@ class ModuleFactory:
     @staticmethod
     def build_tower(in_dim):
         return lambda: MLP(in_dim, in_dim // 2, 1, dropout_rate=0.2)
+
+
+if __name__ == '__main__':
+    N = 5000  # 样本量
+    input_dim = 16  # 特征维度
+    X = torch.randn(N, input_dim)
+
+    # 我们强行设定一个极其刁钻的“全局偏置” (真实世界里可能是该场景的基础 CTR)
+    TRUE_BIAS = 4.26
+
+    # 真实用户的个性化偏好 (均值期望为 0，因为 X 是标准正态分布)
+    # 假设前几个特征对结果有强影响
+    TRUE_FLUCTUATION = X[:, 0] * 2.0 - X[:, 1] * 1.5 + X[:, 2] * 0.5
+
+    # 最终的 Label = 全局偏置 + 个性化波动 + 少量高斯噪声
+    Y = TRUE_BIAS + TRUE_FLUCTUATION + torch.randn(N) * 0.1
+    Y = Y.unsqueeze(1)  # shape: [5000, 1]
+
+    # ==========================================
+    # 3. 训练模型，见证奇迹
+    # ==========================================
+    # 构建一个 MLP，输出维度必须是 1 (预测单分)
+    model = BifurcatedMLP(16, 64, 32, 1)
+    from torch import optim
+    optimizer = optim.Adam(model.parameters(), lr=0.1)
+    criterion = nn.MSELoss()
+
+    print("\n=== 开始训练 ===")
+    model.train()
+    for epoch in range(500):
+        optimizer.zero_grad()
+
+        # 前向传播，输出 shape: [Batch, 2, 1]
+        out = model(X)
+
+        # 把 Bias 和 Fluctuation 加起来算总预测值
+        y_pred = out.sum(dim=1)  # shape: [Batch, 1]
+
+        loss = criterion(y_pred, Y)
+        loss.backward()
+        optimizer.step()
+
+        if (epoch + 1) % 100 == 0:
+            print(f"Epoch {epoch + 1}/500, Loss: {loss.item():.4f}")
+
+    # ==========================================
+    # 4. 硬核解剖：验证解耦是否成功
+    # ==========================================
+    print("\n=== 验证解耦效果 ===")
+    model.eval()
+    with torch.no_grad():
+        test_out = model(X)
+
+        # 提取两部分
+        learned_bias = test_out[:, 0, :]  # shape: [Batch, 1]
+        learned_fluctuation = test_out[:, 1, :]  # shape: [Batch, 1]
+
+        # 1. 验证 Bias 是否精准抓住了全局大盘水位
+        # 参数 self.bias 和 BatchNorm 中记录的 running_mean 的总和才是物理上的真实 bias
+        static_param_bias = model.bias.item()
+        print()
+
+        print(f"[验证 1] 设定的真实全局偏置 : {TRUE_BIAS}")
+        print(f"[验证 1] 模型学到的总体 Bias: {model.bias.item():.4f}")
+
+        # 2. 验证 Fluctuation 是否真的是 0 均值，且拟合了个性化波动
+        mean_fluc = learned_fluctuation.mean().item()
+        print(f"\n[验证 2] 预测调节值的均值 (应极度接近 0): {mean_fluc:.6f}")
+
+        # 3. 验证 Fluctuation 的相关性
+        # 如果解耦成功，学到的 fluctuation 应该和真值高度正相关
+        fluc_flat = learned_fluctuation.squeeze()
+        correlation = torch.corrcoef(torch.stack([fluc_flat, TRUE_FLUCTUATION]))[0, 1].item()
+        print(f"[验证 3] 学到的波动与真实波动的皮尔逊相关系数: {correlation:.4f} (越接近 1.0 越好)")
