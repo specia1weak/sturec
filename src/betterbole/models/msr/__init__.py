@@ -1,9 +1,9 @@
-from typing import Dict
+from typing import Dict, Type
 
 from betterbole.core.enum_type import FeatureSource
 from betterbole.core.interaction import Interaction
 from betterbole.emb import SchemaManager
-from betterbole.emb.emblayer import UserSideEmb, ItemSideEmb, InterSideEmb
+from betterbole.emb.emblayer import UserSideEmb, ItemSideEmb, InterSideEmb, OmniEmbLayer
 from betterbole.experiment.param import ConfigBase
 from betterbole.experiment.train.context import TrainContext
 from betterbole.experiment.train.trainer import CustomTrainStepProtocol
@@ -12,39 +12,28 @@ from betterbole.models.msr.backbone import (
     MSRBackbone, PLEBackbone, STARBackbone, SharedBottomBackbone, M3oEBackbone, M3oEVersion1Backbone,
     M3oEVersion2Backbone, MMoEBackbone, M2MBackbone, PPNetBackbone, EPNetBackbone
 )
+from betterbole.models.msr.base import MSRModel
 from betterbole.models.utils.container import MultiScenarioContainer
 from betterbole.models.utils.general import ModuleFactory
 
 import torch
 from torch import nn
 
-class MSRModel(BaseModel):
-    def __init__(self, schema_manager: SchemaManager, backbone: MSRBackbone):
-        super().__init__()
-        self.manager = schema_manager
-        self.cfg = cfg
-        sm = schema_manager
-        self.user_emb_layer = UserSideEmb(sm.settings)
-        self.item_emb_layer = ItemSideEmb(sm.settings)
-        self.inter_emb_layer = InterSideEmb(sm.settings)
-        self.input_dim = sm.source2emb_size(FeatureSource.USER_ID, FeatureSource.USER,
-                                                 FeatureSource.ITEM_ID, FeatureSource.ITEM,
-                                                 FeatureSource.INTERACTION)
-        self.DOMAIN = sm.domain_field
-        num_domains = sm.get_setting(self.DOMAIN).vocab_size
-        self.backbone: MSRBackbone = backbone(self.input_dim, num_domains)
+class CustomMSRModel(MSRModel):
+    def __init__(self, manager: SchemaManager, num_domains: int, backbone: MSRBackbone):
+        super().__init__(manager, num_domains)
+        self.backbone = backbone
+        self.omni_embedding: OmniEmbLayer = self.omni_embedding
+        self.input_dim = self.omni_embedding.whole.embedding_dim
+        self.DOMAIN = self.manager.domain_field
+        self.backbone = backbone
         self.head = MultiScenarioContainer(num_domains, ModuleFactory.build_tower(self.backbone.output_dim))
-        self.LABEL = sm.label_field
+        self.LABEL = self.manager.label_field
 
     def concat_embed_input_fields(self, interaction):
-        user_emb = self.user_emb_layer.forward(interaction)
-        item_emb = self.item_emb_layer.forward(interaction)
-        inter_emb = self.inter_emb_layer.forward(interaction)
-        return torch.cat([user_emb, item_emb, inter_emb], dim=-1)
-
+        return self.omni_embedding.whole(interaction)
     def forward(self, x, domain_ids):
         return self.head.forward(self.backbone.forward(x, domain_ids), domain_ids).squeeze(-1)
-
     def predict(self, interaction):
         x = self.concat_embed_input_fields(interaction)
         domain_ids = interaction[self.DOMAIN]
@@ -63,8 +52,8 @@ class MSRModel(BaseModel):
 
 
 class M3oEModel(MSRModel, CustomTrainStepProtocol):
-    def __init__(self, schema_manager: SchemaManager, backbone: MSRBackbone):
-        super().__init__(schema_manager, backbone)
+    def __init__(self, schema_manager: SchemaManager, num_domains: int, backbone: MSRBackbone):
+        super().__init__(schema_manager, num_domains, backbone)
 
     def custom_train_step(self, batch_interaction, ctx: TrainContext):
         loss = self.calculate_loss(batch_interaction)
@@ -78,8 +67,11 @@ class M3oEModel(MSRModel, CustomTrainStepProtocol):
             self.optimizer_arch.step()
         self.optimizer_base.step()
 
-def build_model(schema_manager: SchemaManager, backbone: MSRBackbone):
+def build_model(schema_manager: SchemaManager,
+                num_domains: int,
+                backbone_cls: Type[MSRBackbone],
+                backbone_kwargs: Dict, ):
     if isinstance(backbone, M3oEBackbone):
-        return M3oEModel(schema_manager, backbone)
+        return M3oEModel(schema_manager, num_domains, backbone_cls(**backbone_kwargs))
     else:
-        return MSRModel(schema_manager, backbone)
+        return CustomMSRModel(schema_manager, num_domains, backbone_cls(**backbone_kwargs))

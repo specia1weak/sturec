@@ -38,7 +38,7 @@ class SimplePLE(nn.Module):
         self.item_emb_layer = ItemSideEmb(manager.settings)
 
         self.manager = manager
-        self.input_dim = manager.source2emb_size(FeatureSource.USER_ID, FeatureSource.ITEM_ID, )
+        self.input_dim = manager.source2emb_dim(FeatureSource.USER_ID, FeatureSource.ITEM_ID, )
         print(f"输入总维度{self.input_dim}")
         self.DOMAIN = manager.domain_field
         num_domains = manager.get_setting(self.DOMAIN).vocab_size
@@ -83,9 +83,9 @@ class SpecialModel(nn.Module):
         self.LABEL = manager.label_field
         self.DOMAIN = manager.domain_field
 
-        self.whole_input_dim = manager.source2emb_size(FeatureSource.USER_ID, FeatureSource.ITEM_ID)
-        self.item_id_input_dim = manager.source2emb_size(FeatureSource.ITEM_ID)
-        self.user_id_input_dim = manager.source2emb_size(FeatureSource.USER_ID)
+        self.whole_input_dim = manager.source2emb_dim(FeatureSource.USER_ID, FeatureSource.ITEM_ID)
+        self.item_id_input_dim = manager.source2emb_dim(FeatureSource.ITEM_ID)
+        self.user_id_input_dim = manager.source2emb_dim(FeatureSource.USER_ID)
 
         self.specific_expert = MLP(self.whole_input_dim, 64, 1)
         self.user_id_expert = MLP(self.user_id_input_dim, 64, 1)

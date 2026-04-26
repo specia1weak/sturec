@@ -17,7 +17,7 @@ SPLIT_METHODS = Literal["source", "name", "none", None]
 
 
 class RecEmbedding(nn.Module):
-    def __init__(self, num_embeddings, embedding_dim, padding_idx=0, init_std=1e-4):
+    def __init__(self, num_embeddings, embedding_dim, padding_idx=0, init_std=1e-3):
         super(RecEmbedding, self).__init__()
         self.embedding = nn.Embedding(
             num_embeddings=num_embeddings,
@@ -53,7 +53,7 @@ class BoleEmbLayer(nn.Module):
             # 所有的特征 (不管是数值分箱还是离散ID)，现在都可以统一用 RecEmbedding
             self.emb_modules[setting.field_name] = RecEmbedding(
                 num_embeddings=setting.num_embeddings,
-                embedding_dim=setting.embedding_size,
+                embedding_dim=setting.embedding_dim,
                 padding_idx={True: 0, False: None}[setting.padding_zero]
             )
 
@@ -120,7 +120,7 @@ class SideEmb(nn.Module):
 
         self.target_sources = target_sources  # 转为 tuple 方便后续固定顺序遍历
         self.embedding = BoleEmbLayer(side_settings)
-        self.embedding_size = sum([s.embedding_size for s in side_settings])
+        self.embedding_size = sum([s.embedding_dim for s in side_settings])
 
     def forward(self, interaction, split_by: SPLIT_METHODS="none") -> Union[torch.Tensor, Dict[FeatureSource, torch.Tensor]]:
         # 直接把大宽表吐出的 interaction 传给底层
@@ -276,3 +276,144 @@ class SeqEmbedder(nn.Module):
         seq_len = inter_dict[self.seq_len_field_name]
         emb_seq = self.profile_encoder.forward(seq, split_by)
         return emb_seq, seq_len
+
+
+class EmbView(nn.Module):
+    """
+    轻量级特征视图：
+    本身没有任何参数，只负责将请求转发给底层的 OmniEmbLayer，并自动绑定 target_sources。
+    """
+    def __init__(self, omni_layer: 'OmniEmbLayer', target_sources: Union[FeatureSource, Iterable[FeatureSource]]):
+        super().__init__()
+        # 引用同一个巨无霸底座
+        self.omni = omni_layer
+        self.target_sources = target_sources
+
+    def forward(self, interaction, split_by: SPLIT_METHODS = "none") -> Union[Dict[Union[str, FeatureSource], torch.Tensor], torch.Tensor, None]:
+        return self.omni(interaction, split_by=split_by, target_sources=self.target_sources)
+
+    @property
+    def embedding_dim(self) -> int:
+        # 顺便恢复你之前喜欢的维度属性查询
+        return self.omni.get_output_dim(self.target_sources)
+
+class OmniEmbLayer(nn.Module):
+    """
+    巨无霸统一 Embedding 层：
+    内部纳管所有 settings。forward 时可通过 target_sources 动态指定范围。
+    彻底取代 SideEmb、UserSideEmb、ItemSideEmb 等一众子类。
+    """
+    def __init__(self, emb_settings: Iterable[EmbSetting]):
+        super(OmniEmbLayer, self).__init__()
+        self.settings: List[EmbSetting] = list(emb_settings)
+        self.emb_modules = nn.ModuleDict()
+        self.source2settings: Dict[FeatureSource, List[EmbSetting]] = {}
+
+        # 1. 自动按 Source 归类并初始化底层 Embedding
+        for setting in self.settings:
+            if self.source2settings.get(setting.source) is None:
+                self.source2settings[setting.source] = []
+            self.source2settings[setting.source].append(setting)
+
+            if setting.emb_type in (EmbType.DENSE,):
+                continue
+
+            self.emb_modules[setting.field_name] = RecEmbedding(
+                num_embeddings=setting.num_embeddings,
+                embedding_dim=setting.embedding_dim,
+                padding_idx={True: 0, False: None}[setting.padding_zero]
+            )
+
+        self.whole = EmbView(self, target_sources=(FeatureSource.USER_ID, FeatureSource.USER,
+                                                   FeatureSource.ITEM_ID, FeatureSource.ITEM,
+                                                   FeatureSource.INTERACTION))
+        self.user_all = EmbView(self, target_sources=(FeatureSource.USER_ID, FeatureSource.USER))
+        self.item_all = EmbView(self, target_sources=(FeatureSource.ITEM_ID, FeatureSource.ITEM))
+        self.inter = EmbView(self, target_sources=(FeatureSource.INTERACTION,))
+
+        self.user_id = EmbView(self, target_sources=(FeatureSource.USER_ID,))
+        self.item_id = EmbView(self, target_sources=(FeatureSource.ITEM_ID,))
+
+    def forward(
+            self,
+            interaction,
+            split_by: SPLIT_METHODS = "none",
+            target_sources: Union[FeatureSource, Iterable[FeatureSource]] = None
+    ) -> Union[Dict[Union[str, FeatureSource], torch.Tensor], torch.Tensor, None]:
+
+        split_by = split_by.lower() if isinstance(split_by, str) else None
+        if split_by not in ("source", "name", "none", None):
+            raise ValueError(f"Invalid split_by: {split_by}")
+
+        if target_sources is not None:
+            if not isinstance(target_sources, Iterable):
+                target_sources = {target_sources}
+            else:
+                target_sources = set(target_sources)
+
+        output_embs = {}
+
+        for source, settings in self.source2settings.items():
+            # ✨ 核心：动态范围过滤
+            if target_sources is not None and source not in target_sources:
+                continue
+
+            if not settings:
+                continue
+
+            emb_list = []
+            for setting in settings:
+                idx_tensor = interaction[setting.field_name]
+
+                # 数值特征不查表，直接扩展维度
+                if setting.emb_type in (EmbType.DENSE,):
+                    emb = idx_tensor.unsqueeze(-1)
+                    emb_list.append([setting.field_name, emb])
+                    continue
+
+                emb = self.emb_modules[setting.field_name](idx_tensor)
+
+                # Set 特征的 Pooling
+                if isinstance(setting, SparseSetEmbSetting):
+                    emb = torch.sum(emb, dim=-2)
+                    if setting.agg == "mean":
+                        emb = emb / (idx_tensor > 0).sum(dim=-1, keepdim=True).clamp(min=1)
+
+                emb_list.append([setting.field_name, emb])
+
+            # 组装当前 Source 下的输出
+            if emb_list:
+                if split_by == "source":
+                    output_embs[source] = torch.cat([emb for name, emb in emb_list], dim=-1)
+                elif split_by == "name":
+                    for name, emb in emb_list:
+                        output_embs[name] = emb
+                else:
+                    output_embs.setdefault("all", []).extend([emb for name, emb in emb_list])
+
+        # 最终输出逻辑
+        if split_by is None or split_by == "none":
+            if "all" not in output_embs or not output_embs["all"]:
+                return None
+            else:
+                return torch.cat(output_embs["all"], dim=-1)
+        else:
+            return output_embs
+
+    def get_output_dim(self, target_sources: Union[FeatureSource, Iterable[FeatureSource]] = None) -> int:
+        """
+        获取指定 target_sources 下拼接后 Embedding 的总维度大小。
+        这是为了弥补移除 SideEmb 后，下游网络无法直接获取 self.embedding_size 的问题。
+        """
+        if target_sources is not None:
+            if not isinstance(target_sources, Iterable):
+                target_sources = {target_sources}
+            else:
+                target_sources = set(target_sources)
+
+        total_dim = 0
+        for source, settings in self.source2settings.items():
+            if target_sources is not None and source not in target_sources:
+                continue
+            total_dim += sum(s.embedding_dim for s in settings if hasattr(s, 'embedding_size'))
+        return total_dim

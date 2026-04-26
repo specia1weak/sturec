@@ -26,8 +26,10 @@ class SchemaManager:
     SCHEMA_META_NAME = "feature_meta.json"
     WHOLE_DATA_NAME = "whole_dataframe.parquet"
     def __init__(self, settings_list: List[EmbSetting], work_dir: str,
-                 time_field=None, label_fields: Union[str, Iterable[str]]=None,
-                 domain_fields: Union[str, Iterable[str]]=None):
+                 time_field=None,
+                 label_fields: Union[str, Iterable[str]]=None,
+                 domain_fields: Union[str, Iterable[str]]=None
+                 ):
         self.settings = settings_list
 
         ## path & dir
@@ -258,12 +260,12 @@ class SchemaManager:
             else:
                 print(f"[Warning] 特征 {setting.field_name} 在 JSON 元数据中未找到，将保持默认/未拟合状态。")
 
-    def source2emb_size(self, *sources: FeatureSource):
-        emb_size = 0
+    def source2emb_dim(self, *sources: FeatureSource):
+        emb_dim = 0
         for setting in self.settings:
             if setting.source in sources:
-                emb_size += setting.embedding_size
-        return emb_size
+                emb_dim += setting.embedding_dim
+        return emb_dim
 
     def get_setting(self, field_name):
         for setting in self.settings:

@@ -74,9 +74,9 @@ class Model(nn.Module):
         self.inter_emb_layer = InterSideEmb(manager.settings)
 
         self.manager = manager
-        self.input_dim = manager.source2emb_size(FeatureSource.USER_ID, FeatureSource.USER,
-                                                 FeatureSource.ITEM_ID, FeatureSource.ITEM,
-                                                 FeatureSource.INTERACTION)
+        self.input_dim = manager.source2emb_dim(FeatureSource.USER_ID, FeatureSource.USER,
+                                                FeatureSource.ITEM_ID, FeatureSource.ITEM,
+                                                FeatureSource.INTERACTION)
         print(f"输入总维度{self.input_dim}")
         self.DOMAIN = manager.domain_field
         num_domains = manager.get_setting(self.DOMAIN).vocab_size

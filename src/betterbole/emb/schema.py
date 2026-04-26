@@ -49,10 +49,10 @@ def clear_seq_expr(field_name, is_string_format, separator):
 class EmbSetting(ABC):
     emb_type = EmbType.UNKNOWN
 
-    def __init__(self, field_name: str, embedding_size: int, source: FeatureSource = FeatureSource.UNKNOWN,
+    def __init__(self, field_name: str, embedding_dim: int, source: FeatureSource = FeatureSource.UNKNOWN,
                  padding_zero=True, use_oov: bool = True):
         self.field_name = field_name
-        self.embedding_size = embedding_size
+        self.embedding_dim = embedding_dim
         self.source = source
         self.is_fitted = False
 
@@ -97,7 +97,7 @@ class EmbSetting(ABC):
         return {
             "type": self.emb_type.name,
             "field_name": self.field_name,
-            "embedding_size": self.embedding_size,
+            "embedding_size": self.embedding_dim,
             "num_embeddings": self.num_embeddings,
             "vocab_size": self.vocab_size,
             "feature_source": self.source.name,
@@ -124,9 +124,9 @@ class EmbSetting(ABC):
 class SparseEmbSetting(EmbSetting):
     emb_type = EmbType.SPARSE
 
-    def __init__(self, field_name: str, source: FeatureSource, embedding_size: int = 16,
+    def __init__(self, field_name: str, source: FeatureSource, embedding_dim: int = 16,
                  padding_zero: bool = True, min_freq: int = 1, use_oov: bool = True):
-        super().__init__(field_name, embedding_size, source, padding_zero, use_oov)
+        super().__init__(field_name, embedding_dim, source, padding_zero, use_oov)
         self.min_freq = min_freq
 
     def get_fit_exprs(self):
@@ -179,7 +179,7 @@ class SparseEmbSetting(EmbSetting):
         obj = cls(
             field_name=data["field_name"],
             source=FeatureSource[data["feature_source"]],
-            embedding_size=data["embedding_size"],
+            embedding_dim=data["embedding_size"],
             padding_zero=data.get("padding_zero", True),
             min_freq=data.get("min_freq", 1),
             use_oov=data.get("use_oov", True)
@@ -191,10 +191,10 @@ class SparseEmbSetting(EmbSetting):
 class SparseSetEmbSetting(EmbSetting):
     emb_type = EmbType.SPARSE_SET
 
-    def __init__(self, field_name: str, source: FeatureSource, embedding_size: int = 16,
+    def __init__(self, field_name: str, source: FeatureSource, embedding_dim: int = 16,
                  max_len: int = 5, is_string_format: bool = False, separator: str = ",",
                  padding_zero: bool = True, min_freq: int = 1, use_oov: bool = True, agg="sum"):
-        super().__init__(field_name, embedding_size, source, padding_zero, use_oov)
+        super().__init__(field_name, embedding_dim, source, padding_zero, use_oov)
         self.max_len = max_len
         self.is_string_format = is_string_format
         self.separator = separator
@@ -258,7 +258,7 @@ class SparseSetEmbSetting(EmbSetting):
         obj = cls(
             field_name=data["field_name"],
             source=FeatureSource[data["feature_source"]],
-            embedding_size=data["embedding_size"],
+            embedding_dim=data["embedding_size"],
             max_len=data.get("max_len", 5),
             is_string_format=data.get("is_string_format", False),
             separator=data.get("separator", ","),
@@ -275,9 +275,9 @@ class QuantileEmbSetting(EmbSetting):
     emb_type = EmbType.QUANTILE
 
     def __init__(self, field_name: str, source: FeatureSource, bucket_count: int = 10,
-                 embedding_size: int = 16, boundaries: Optional[List[float]] = None):
+                 embedding_dim: int = 16, boundaries: Optional[List[float]] = None):
         # Quantile离散化不需要常规的字符串OOV机制
-        super().__init__(field_name, embedding_size, source, padding_zero=True, use_oov=False)
+        super().__init__(field_name, embedding_dim, source, padding_zero=True, use_oov=False)
         self.bucket_count = bucket_count
         self.boundaries = boundaries if boundaries is not None else []
         if self.boundaries:
@@ -342,7 +342,7 @@ class QuantileEmbSetting(EmbSetting):
             field_name=data["field_name"],
             source=FeatureSource[data["feature_source"]],
             bucket_count=data.get("bucket_count", 10),
-            embedding_size=data["embedding_size"],
+            embedding_dim=data["embedding_size"],
             boundaries=data.get("boundaries", [])
         )
         obj.is_fitted = data.get("is_fitted", False)
@@ -357,7 +357,7 @@ class IdSeqEmbSetting(EmbSetting):
         # 共享目标词表的配置
         super().__init__(
             field_name=field_name,
-            embedding_size=target_setting.embedding_size,
+            embedding_dim=target_setting.embedding_dim,
             source=target_setting.source,
             padding_zero=target_setting.padding_zero,
             use_oov=target_setting.use_oov

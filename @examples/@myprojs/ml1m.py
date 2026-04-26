@@ -31,16 +31,16 @@ class SimpleBPR(nn.Module):
         self.inter_emb_layer = InterSideEmb(manager.settings)
 
         self.manager = manager
-        item_embedding_size = manager.source2emb_size(
+        item_embedding_size = manager.source2emb_dim(
             FeatureSource.ITEM_ID, FeatureSource.ITEM,
         )
         self.seq_embeder = SeqEmbedder("history", manager.settings, self.item_profile_encoder)
         self.seq_encoder = AttentionSequencePoolingLayer(item_embedding_size)
         # self.seq_encoder = SequencePoolingLayer(mode='mean')
         self.LABEL = manager.label_field
-        self.input_dim = manager.source2emb_size(FeatureSource.USER_ID, FeatureSource.USER,
-                                                 FeatureSource.ITEM_ID, FeatureSource.ITEM,
-                                                 FeatureSource.INTERACTION) + item_embedding_size # 后者来自序列建模
+        self.input_dim = manager.source2emb_dim(FeatureSource.USER_ID, FeatureSource.USER,
+                                                FeatureSource.ITEM_ID, FeatureSource.ITEM,
+                                                FeatureSource.INTERACTION) + item_embedding_size # 后者来自序列建模
         # self.input_dim = manager.source2emb_size(FeatureSource.USER_ID, FeatureSource.USER,
         #                                          FeatureSource.ITEM_ID, FeatureSource.ITEM,
         #                                          FeatureSource.INTERACTION) # 后者来自序列建模
@@ -94,7 +94,7 @@ class SimpleMLP(nn.Module):
         self.item_profile_encoder = ItemProfileEncoder(manager.settings, manager.work_dir / manager.ITEM_PROFILE_NAME)
         self.LABEL = manager.label_field
         self.DOMAIN = manager.domain_field
-        self.input_dim = manager.source2emb_size(FeatureSource.USER, FeatureSource.USER_ID, FeatureSource.ITEM, FeatureSource.ITEM_ID)
+        self.input_dim = manager.source2emb_dim(FeatureSource.USER, FeatureSource.USER_ID, FeatureSource.ITEM, FeatureSource.ITEM_ID)
 
         self.mlp = ModuleFactory.build_expert(self.input_dim, hidout_dims=[256, 128, 64], dropout_rate=0.5)()
         self.tower = nn.Linear(64, 1)
@@ -133,12 +133,12 @@ class SpecialModel(nn.Module):
         self.LABEL = manager.label_field
         self.DOMAIN = manager.domain_field
 
-        self.whole_input_dim = manager.source2emb_size(FeatureSource.USER_ID, FeatureSource.USER,
-                                                 FeatureSource.ITEM_ID, FeatureSource.ITEM,FeatureSource.INTERACTION)
-        self.share_input_dim = manager.source2emb_size(FeatureSource.USER,FeatureSource.ITEM,FeatureSource.INTERACTION)
-        self.specific_input_dim = manager.source2emb_size(FeatureSource.USER_ID,FeatureSource.ITEM_ID)
-        self.item_id_input_dim = manager.source2emb_size(FeatureSource.ITEM_ID)
-        self.user_id_input_dim = manager.source2emb_size(FeatureSource.USER_ID)
+        self.whole_input_dim = manager.source2emb_dim(FeatureSource.USER_ID, FeatureSource.USER,
+                                                      FeatureSource.ITEM_ID, FeatureSource.ITEM, FeatureSource.INTERACTION)
+        self.share_input_dim = manager.source2emb_dim(FeatureSource.USER, FeatureSource.ITEM, FeatureSource.INTERACTION)
+        self.specific_input_dim = manager.source2emb_dim(FeatureSource.USER_ID, FeatureSource.ITEM_ID)
+        self.item_id_input_dim = manager.source2emb_dim(FeatureSource.ITEM_ID)
+        self.user_id_input_dim = manager.source2emb_dim(FeatureSource.USER_ID)
 
         # self.whole_expert = MLP(self.whole_input_dim, self.whole_input_dim // 2, 64, 1)
         self.share_expert = MLP(self.share_input_dim, self.share_input_dim // 2, 64, 1)

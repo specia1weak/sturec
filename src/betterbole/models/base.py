@@ -1,15 +1,20 @@
 # from recbole.model.abstract_recommender !!
-from abc import abstractmethod
+from abc import abstractmethod, ABC
 
 from betterbole.core.interaction import Interaction
 import numpy as np
 from torch import nn
 
+from betterbole.emb import SchemaManager
+from betterbole.emb.emblayer import OmniEmbLayer
 
 
-class BaseModel(nn.Module):
-    def __init__(self):
+class BaseModel(ABC, nn.Module):
+    def __init__(self, manager: SchemaManager):
         super(BaseModel, self).__init__()
+        self.manager: SchemaManager = manager
+        self.omni_embedding: OmniEmbLayer = OmniEmbLayer(manager.settings)
+
     @abstractmethod
     def calculate_loss(self, interaction: Interaction):
         raise NotImplementedError
@@ -27,3 +32,4 @@ class BaseModel(nn.Module):
             super().__str__()
             + f": {params}"
         )
+

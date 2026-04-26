@@ -25,9 +25,9 @@ class SimpleBPR(nn.Module):
         self.inter_emb_layer = InterSideEmb(manager.settings)
         self.manager = manager
         self.LABEL = manager.label_field
-        self.input_dim = manager.source2emb_size(FeatureSource.USER_ID, FeatureSource.USER,
-                                                 FeatureSource.ITEM_ID, FeatureSource.ITEM,
-                                                 FeatureSource.INTERACTION)
+        self.input_dim = manager.source2emb_dim(FeatureSource.USER_ID, FeatureSource.USER,
+                                                FeatureSource.ITEM_ID, FeatureSource.ITEM,
+                                                FeatureSource.INTERACTION)
         print(f"输入维度, {self.input_dim}")
         self.backbone = PLE(self.input_dim, num_domains=3)
         self.DOMAIN = manager.domain_field

@@ -36,12 +36,12 @@ class SpecialModel(nn.Module):
         self.LABEL = manager.label_field
         self.DOMAIN = manager.domain_field
 
-        self.whole_input_dim = manager.source2emb_size(FeatureSource.USER_ID, FeatureSource.USER,
-                                                 FeatureSource.ITEM_ID, FeatureSource.ITEM,FeatureSource.INTERACTION)
-        self.share_input_dim = manager.source2emb_size(FeatureSource.USER,FeatureSource.ITEM,FeatureSource.INTERACTION)
-        self.specific_input_dim = manager.source2emb_size(FeatureSource.USER_ID,FeatureSource.ITEM_ID)
-        self.item_id_input_dim = manager.source2emb_size(FeatureSource.ITEM_ID)
-        self.user_id_input_dim = manager.source2emb_size(FeatureSource.USER_ID)
+        self.whole_input_dim = manager.source2emb_dim(FeatureSource.USER_ID, FeatureSource.USER,
+                                                      FeatureSource.ITEM_ID, FeatureSource.ITEM, FeatureSource.INTERACTION)
+        self.share_input_dim = manager.source2emb_dim(FeatureSource.USER, FeatureSource.ITEM, FeatureSource.INTERACTION)
+        self.specific_input_dim = manager.source2emb_dim(FeatureSource.USER_ID, FeatureSource.ITEM_ID)
+        self.item_id_input_dim = manager.source2emb_dim(FeatureSource.ITEM_ID)
+        self.user_id_input_dim = manager.source2emb_dim(FeatureSource.USER_ID)
 
         self.specific_expert = MLP(self.specific_input_dim, 64, 1)
         self.user_id_expert = MLP(self.user_id_input_dim, 64, 1)

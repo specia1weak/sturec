@@ -33,15 +33,15 @@ class SpecialModel(nn.Module):
         self.inter_emb_layer = InterSideEmb(manager.settings)
 
         self.manager = manager
-        item_embedding_size = manager.source2emb_size(
+        item_embedding_size = manager.source2emb_dim(
             FeatureSource.ITEM_ID, FeatureSource.ITEM,
         )
         self.LABEL = manager.label_field
         self.DOMAIN = manager.domain_field
-        self.whole_input_dim = manager.source2emb_size(FeatureSource.USER_ID, FeatureSource.USER,
-                                                 FeatureSource.ITEM_ID, FeatureSource.ITEM,FeatureSource.INTERACTION)
-        self.share_input_dim = manager.source2emb_size(FeatureSource.USER,FeatureSource.ITEM,FeatureSource.INTERACTION)
-        self.specific_input_dim = manager.source2emb_size(FeatureSource.USER_ID,FeatureSource.ITEM_ID)
+        self.whole_input_dim = manager.source2emb_dim(FeatureSource.USER_ID, FeatureSource.USER,
+                                                      FeatureSource.ITEM_ID, FeatureSource.ITEM, FeatureSource.INTERACTION)
+        self.share_input_dim = manager.source2emb_dim(FeatureSource.USER, FeatureSource.ITEM, FeatureSource.INTERACTION)
+        self.specific_input_dim = manager.source2emb_dim(FeatureSource.USER_ID, FeatureSource.ITEM_ID)
 
         self.whole_expert = MLP(self.whole_input_dim, self.whole_input_dim // 2, 64, 1)
         self.share_expert = MLP(self.share_input_dim, self.share_input_dim // 2, 64, 1)
