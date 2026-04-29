@@ -1,78 +1,188 @@
-import pyarrow.parquet as pq
+import math
 import numpy as np
-import pyarrow.compute as pc
 import pyarrow as pa
-from torch.utils.data import IterableDataset
-import torch.nn.utils.rnn as rnn_utils
-def convert_to_tensor(data):
-    """
-    增强版转换函数：完美兼容 uint32 并自动对齐 PyTorch 常用类型。
-    """
-    # 1. 预处理：如果是含有 uint32 的 NumPy 数组，强制转为 int64 (Long)
-    # 因为 PyTorch 不支持 uint32，且 ID 类数据转 int64 最保险（防止溢出）
-    if isinstance(data, np.ndarray) and data.dtype == np.uint32:
-        data = data.astype(np.int64)
-    elif isinstance(data, pd.Series) and data.dtype == "uint32":
-        data = data.astype(np.int64)
-
-    elem = data[0]
-
-    # 情况 A：单值/数值数组处理
-    if isinstance(elem, (float, int, np.floating, np.integer)):
-        new_data = torch.as_tensor(data)
-
-    # 情况 B：序列处理 (例如 tags, history_videos)
-    elif isinstance(elem, (list, tuple, pd.Series, np.ndarray, torch.Tensor)):
-        # 对每一个子序列进行递归或类型防御
-        seq_data = []
-        for d in data:
-            # 防御子序列中的 uint32
-            if isinstance(d, np.ndarray) and d.dtype == np.uint32:
-                d = d.astype(np.int64)
-            seq_data.append(torch.as_tensor(d))
-        new_data = rnn_utils.pad_sequence(seq_data, batch_first=True)
-
-    else:
-        raise ValueError(f"[{type(elem)}] is not supported!")
-
-    # 3. 类型后置对齐
-    # float64 转 float32 是推荐系统的基操，节省一半显存
-    if new_data.dtype == torch.float64:
-        new_data = new_data.float()
-    # uint8 虽然 PyTorch 支持，但在做 Embedding 索引时通常需要 Long
-    elif new_data.dtype == torch.uint8:
-        new_data = new_data.long()
-
-    return new_data
-
+import pyarrow.parquet as pq
+import pyarrow.compute as pc
 import torch
 from torch.utils.data import IterableDataset, DataLoader
+
 from betterbole.core.interaction import Interaction
-import math
+from betterbole.emb.schema import EmbType
+from betterbole.emb import SchemaManager
 
 
 class ParquetStreamDataset(IterableDataset):
-    def __init__(self, parquet_path: str, valid_col_names=None, batch_size: int = 4096,
+    def __init__(self, parquet_path: str, manager: SchemaManager, batch_size: int = 4096,
                  shuffle: bool = True, drop_last: bool = True, shuffle_buffer_size: int = 2000000):
         """
-        :param parquet_path:
-        :param valid_col_names:
-        :param batch_size:
-        :param shuffle:
-        :param drop_last:
-        :param shuffle_buffer_size: 它占用的是cpu内存
+        基于 PyArrow 的极速流式数据集
+        :param manager: 传入 SchemaManager，将自动被“编译”为底层物理列处理规则，告别复杂的按列推断
         """
         super().__init__()
         self.parquet_path = parquet_path
+        self.manager = manager
         self.batch_size = batch_size
-        self.valid_col_names = valid_col_names
-
-        # 将配置彻底解耦
+        self.valid_col_names = manager.fields()
         self.shuffle = shuffle
         self.drop_last = drop_last
-
-        # 核心逻辑：如果不 shuffle，就不需要大缓冲池，只要攒够一个 batch_size 就可以触发计算
         self.trigger_size = shuffle_buffer_size if self.shuffle else self.batch_size
+
+        self.col_rules = self._compile_rules()
+
+    def _compile_rules(self):
+        """
+        基于 EmbType 的纯净编译器：配置驱动，解耦类依赖。
+        """
+        rules = {}
+        if not self.manager:
+            return rules
+
+        for setting in self.manager.settings:
+            pad_side = getattr(setting, "padding_side", "right")
+            if setting.emb_type == EmbType.DENSE:
+                rules[setting.field_name] = {"type": "DENSE"}
+
+            # --- 2. 单独的变长 Set 序列 (如单独的 genres) ---
+            elif setting.emb_type in (EmbType.SPARSE_SEQ, EmbType.SPARSE_SET):
+                # 实际上这个类似不指定padding side也没事
+                rules[setting.field_name] = {
+                    "type": "2D_SEQ",
+                    "max_len": getattr(setting, "max_len", 10),
+                    "padding_side": pad_side
+                }
+
+            # --- 3. 共享词表的序列 (核心：根据 Target 类型降维打击) ---
+            elif setting.emb_type == EmbType.SHARE_SEQ:
+                if setting.target_setting.emb_type == EmbType.SPARSE_SET:
+                    rules[setting.field_name] = {
+                        "type": "3D_SEQ",
+                        "max_seq_len": setting.max_len,
+                        "max_tag_len": getattr(setting.target_setting, "max_len", 3),
+                        "padding_side": pad_side # ✨ 新增
+                    }
+                else:
+                    rules[setting.field_name] = {
+                        "type": "2D_SEQ",
+                        "max_len": setting.max_len,
+                        "padding_side": pad_side # ✨ 新增
+                    }
+
+            # --- 4. 兼容处理老旧的 SEQ_GROUP (如果还有残留的话) ---
+            elif setting.emb_type == EmbType.SEQ_GROUP:
+                for seq_col, target_setting in setting.target_dict.items():
+                    if target_setting.emb_type == EmbType.SPARSE_SET:
+                        rules[seq_col] = {"type": "3D_SEQ", "max_seq_len": setting.max_len,
+                                          "max_tag_len": getattr(target_setting, "max_len", 3)}
+                    else:
+                        rules[seq_col] = {"type": "2D_SEQ", "max_len": setting.max_len}
+
+            # --- 5. 常规 1D 离散特征兜底 ---
+            elif setting.emb_type in (EmbType.SPARSE, EmbType.QUANTILE, EmbType.ABS_RANGE):
+                rules[setting.field_name] = {"type": "1D_INT"}
+
+            else:
+                rules[setting.field_name] = {"type": "1D_INT"}
+
+        # --- 补充环境/非特征字段 ---
+        for ctx_col in self.manager.label_fields + self.manager.domain_fields + (self.manager.time_field,):
+            if ctx_col and ctx_col not in rules:
+                rules[ctx_col] = {"type": "FALLBACK"}
+
+        return rules
+
+    def _format_tensor_dict(self, batch_dict):
+        """
+        🚀 终极组装车间：O(1) 查表进行类型转换和定长 Padding，性能极高。
+        """
+        tensor_dict = {}
+        for col, data in batch_dict.items():
+            rule = self.col_rules.get(col, {"type": "FALLBACK"})
+            rule_type = rule["type"]
+
+            try:
+                # --- 1. 连续值特征 (Dense) ---
+                if rule_type == "DENSE":
+                    tensor_dict[col] = torch.tensor(data, dtype=torch.float32)
+
+                # --- 2. 一维离散 ID ---
+                elif rule_type == "1D_INT":
+                    if data.dtype == np.uint32:
+                        data = data.astype(np.int64)  # 终结 PyTorch uint32 报错
+                    tensor_dict[col] = torch.tensor(data, dtype=torch.long)
+
+                # --- 3. 2D 序列 (Id_seq / Tags) ---
+                elif rule_type == "2D_SEQ":
+                    arr = self._pad_list(
+                        data,
+                        max_len=rule["max_len"],
+                        padding_side=rule.get("padding_side", "right") # ✨ 传入
+                    )
+                    tensor_dict[col] = torch.tensor(arr, dtype=torch.long)
+
+                # --- 4. 3D 嵌套序列 (Tags_seq) ---
+                elif rule_type == "3D_SEQ":
+                    arr = self._pad_nested_list(
+                        data,
+                        max_seq_len=rule["max_seq_len"],
+                        max_tag_len=rule["max_tag_len"],
+                        padding_side=rule.get("padding_side", "right")
+                    )
+                    tensor_dict[col] = torch.tensor(arr, dtype=torch.long)
+
+                # --- 5. 兜底处理 (Label / Time 等) ---
+                elif rule_type == "FALLBACK":
+                    if data.dtype in (np.float32, np.float64):
+                        tensor_dict[col] = torch.tensor(data, dtype=torch.float32)
+                    elif data.dtype == np.uint32:
+                        tensor_dict[col] = torch.tensor(data.astype(np.int64), dtype=torch.long)
+                    else:
+                        tensor_dict[col] = torch.tensor(data)
+
+            except Exception as e:
+                raise RuntimeError(f"列 [{col}] 在转换为 Tensor 时发生错误，匹配到的规则为: {rule}。 错误信息: {e}")
+
+        return tensor_dict
+
+    def _pad_list(self, sequences, max_len, padding_side="right", pad_val=0):
+        padded = np.full((len(sequences), max_len), pad_val, dtype=np.int64)
+        for i, seq in enumerate(sequences):
+            if seq is None or (isinstance(seq, float) and np.isnan(seq)) or len(seq) == 0:
+                continue
+
+            seq_list = list(seq)
+            valid_len = min(len(seq_list), max_len)
+            trunc_seq = seq_list[-valid_len:]
+            if padding_side == "right":
+                padded[i, :valid_len] = trunc_seq
+            elif padding_side == "left":
+                padded[i, max_len - valid_len:] = trunc_seq
+            else:
+                raise ValueError(f"Unknown padding_side: {padding_side}")
+
+        return padded
+
+    def _pad_nested_list(self, sequences, max_seq_len, max_tag_len, padding_side="right", pad_val=0):
+        padded = np.full((len(sequences), max_seq_len, max_tag_len), pad_val, dtype=np.int64)
+        for i, seq in enumerate(sequences):
+            if seq is None or (isinstance(seq, float) and np.isnan(seq)) or len(seq) == 0:
+                continue
+
+            seq_list = list(seq)
+            valid_seq_len = min(len(seq_list), max_seq_len)
+            trunc_seq = seq_list[-valid_seq_len:]
+            start_idx = 0 if padding_side == "right" else max_seq_len - valid_seq_len
+
+            for j in range(valid_seq_len):
+                tags = trunc_seq[j]
+                if tags is None or len(tags) == 0:
+                    continue
+
+                tags_list = list(tags)
+                valid_tag_len = min(len(tags_list), max_tag_len)
+                trunc_tags = tags_list[:valid_tag_len]
+                padded[i, start_idx + j, :valid_tag_len] = trunc_tags
+
+        return padded
 
     def _process_and_yield_buffer(self, arrow_batches_list, is_last=False):
         if not arrow_batches_list:
@@ -83,6 +193,7 @@ class ParquetStreamDataset(IterableDataset):
         if total_rows == 0:
             return None
 
+        # --- 阶段一：PyArrow 清洗与 NumPy 零拷贝视图获取 ---
         batch_dict = {}
         for col_name, col_data in zip(table.column_names, table.columns):
             if self.valid_col_names is not None and col_name not in self.valid_col_names:
@@ -98,7 +209,7 @@ class ParquetStreamDataset(IterableDataset):
 
             batch_dict[col_name] = clean_col.to_numpy(zero_copy_only=False)
 
-        # 根据独立开关决定是否打乱索引
+        # --- 阶段二：打乱索引 ---
         if self.shuffle:
             indices = np.random.permutation(total_rows)
         else:
@@ -107,29 +218,27 @@ class ParquetStreamDataset(IterableDataset):
         num_complete_batches = total_rows // self.batch_size
         start_idx = 0
 
-        # 吐出所有完整的 Batch
+        # --- 阶段三：切片与组装 Interaction ---
         for _ in range(num_complete_batches):
             end_idx = start_idx + self.batch_size
             batch_indices = indices[start_idx:end_idx]
-
             yield_dict = {col: arr[batch_indices] for col, arr in batch_dict.items()}
-            yield Interaction(yield_dict)
+            tensor_dict = self._format_tensor_dict(yield_dict)
+            yield Interaction(tensor_dict)
 
             start_idx = end_idx
 
-        # 独立处理残留数据
+        # --- 阶段四：处理余数 ---
         if start_idx < total_rows:
             if is_last:
-                # 文件彻底结束：根据 drop_last 决定是抛弃还是强行吐出
                 if not self.drop_last:
                     batch_indices = indices[start_idx:]
                     yield_dict = {col: arr[batch_indices] for col, arr in batch_dict.items()}
-                    yield Interaction(yield_dict)
+                    tensor_dict = self._format_tensor_dict(yield_dict)
+                    yield Interaction(tensor_dict)
                 return None
             else:
-                # 文件未结束：保持 Arrow 零拷贝视图，留给下一个池子
                 return table.slice(start_idx, total_rows - start_idx)
-
         return None
 
     def __iter__(self):
@@ -148,20 +257,15 @@ class ParquetStreamDataset(IterableDataset):
         current_rows = 0
 
         for i in iter_range:
-            # 根据情况动态调整底层读取步长
             read_chunk_size = self.batch_size * 4 if self.shuffle else self.batch_size
-            row_group_iter = pf.iter_batches(batch_size=read_chunk_size,
-                                             row_groups=[i],
-                                             columns=self.valid_col_names)
+            row_group_iter = pf.iter_batches(batch_size=read_chunk_size, row_groups=[i], columns=self.valid_col_names)
 
             for arrow_batch in row_group_iter:
                 current_arrow_batches.append(arrow_batch)
                 current_rows += arrow_batch.num_rows
 
-                # 使用动态 trigger_size 判断是否开始处理
                 if current_rows >= self.trigger_size:
                     gen = self._process_and_yield_buffer(current_arrow_batches, is_last=False)
-
                     residual_table = None
                     while True:
                         try:
@@ -181,71 +285,3 @@ class ParquetStreamDataset(IterableDataset):
             for item in gen:
                 if not isinstance(item, pa.Table):
                     yield item
-
-if __name__ == '__main__':
-    import pandas as pd
-    import os
-    def create_dummy_parquet(file_path="dummy_data.parquet", num_rows=250000):
-        print(f"正在生成测试文件: {file_path} ({num_rows} 行)...")
-        df = pd.DataFrame({
-            "user_id": np.random.randint(1, 10000, size=num_rows),
-            "item_id": np.random.randint(1, 50000, size=num_rows),
-            "label": np.random.randint(0, 2, size=num_rows)
-        })
-        table = pa.Table.from_pandas(df)
-        # 强制分块写入，模拟真实的 Row Group
-        pq.write_table(table, file_path, row_group_size=50000)
-        print("测试文件生成完毕！\n" + "-" * 40)
-
-
-    # 1. 准备数据
-    test_file = "dummy_data.parquet"
-    if not os.path.exists(test_file):
-        create_dummy_parquet(test_file, num_rows=250000)  # 生成 25 万条数据
-
-    # 2. 实例化 Dataset
-    # 设定 batch_size 为 4000，乱序池为 50000
-    dataset = ParquetStreamDataset(
-        parquet_path=test_file,
-        batch_size=4000,
-        shuffle_buffer_size=50000
-    )
-
-    # 3. 配置 DataLoader（参数非常关键）
-    dataloader = DataLoader(
-        dataset,
-        batch_size=None,  # 必须为 None，让 Dataset 自己划分 Batch
-        num_workers=2,  # 开启 2 个进程并行读取
-        prefetch_factor=2,  # 每个进程提前预读 2 个 Batch
-        pin_memory=False  # 测试时不占用显存，如果是真实 GPU 训练设为 True
-    )
-
-    # 4. 模拟训练循环
-    print("开始流式读取数据：")
-    step = 0
-    total_samples = 0
-
-    for batch in dataloader:
-        step += 1
-        # batch 就是你 yield 出来的字典（或 Interaction）
-        # 因为 batch_size=None，DataLoader 不会给你增加额外的维度
-        user_ids = batch['user_id']
-        items = batch['item_id']
-        labels = batch['label']
-
-        current_batch_size = len(user_ids)
-        total_samples += current_batch_size
-
-        print(f"Step {step:02d} | 读取到 Batch 大小: {current_batch_size} | "
-              f"User_ID 形状: {user_ids.shape} | 累计读取: {total_samples}")
-
-        # 模拟训练过程中的耗时
-        # loss = model(batch)
-        # loss.backward()
-
-        if step >= 10:
-            print("... (只打印前 10 步验证效果)")
-            break
-
-    print("-" * 40)
-    print("测试成功！多进程 DataLoader 与流式 Dataset 工作正常。")

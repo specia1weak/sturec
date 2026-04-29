@@ -1,7 +1,8 @@
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import List, Dict, Any, Optional
-
+from typing import List, Dict, Any, Optional, Literal
+import torch
+from torch import nn
 import numpy as np
 import polars as pl
 
@@ -16,6 +17,8 @@ class EmbType(Enum):
     SPARSE_SEQ = "sparse_seq"
     SPARSE_SET = "sparse_set"
     DENSE = "dense"
+    SEQ_GROUP = "seq_group"
+    SHARE_SEQ = "share_seq"
 
 
 def explode_expr(field_name, is_string_format=True, separator=","):
@@ -42,6 +45,24 @@ def clear_seq_expr(field_name, is_string_format, separator):
     return expr.list.eval(clean_expr.filter(filter_expr))
 
 
+def clear_seq_expr(field_name, is_string_format, separator):
+    if is_string_format:
+        # 【字符串格式】如 "1, 2, , 4" 或 null
+        expr = (
+            pl.col(field_name)
+            .fill_null("")  # 1. 外部保底：整列 null 变空字符串 ""
+            .str.replace_all(" ", "")  # 2. 全局去空格，替代原先内层的 strip_chars()
+            .str.split(separator)  # 3. 切分，产生 List[Utf8]
+            .list.eval(pl.element().filter(pl.element() != ""))
+        )
+    else:
+        expr = (
+            pl.col(field_name)
+            .fill_null([])  # 1. 外部保底：整列的 null 变成空列表 []
+            .list.drop_nulls()  # 2. 外部原生方法：瞬间抽干列表内部的 null，无需 eval！
+            .cast(pl.List(pl.Utf8))  # 3. 【核心】在外部将整个 List 强转为 List[Utf8]，替代 eval 内部的 cast
+        )
+    return expr
 
 # ==========================================
 # 1. 规则层 (Rule Layer) - 彻底声明式
@@ -120,6 +141,16 @@ class EmbSetting(ABC):
     def from_dict(cls, data: Dict[str, Any]) -> 'EmbSetting':
         pass
 
+    @abstractmethod
+    def compute_tensor(self, interaction: dict, emb_modules: nn.ModuleDict) -> torch.Tensor:
+        """
+        PyTorch 前向计算的抽象策略：
+        交由各个特征自行决定如何查表、如何 Pooling、如何拼接。
+        :param interaction: DataLoader 吐出的全量数据字典
+        :param emb_modules: 注册在 OmniEmbLayer 上的权重模块字典
+        """
+        pass
+
 
 class SparseEmbSetting(EmbSetting):
     emb_type = EmbType.SPARSE
@@ -187,6 +218,9 @@ class SparseEmbSetting(EmbSetting):
         obj.load_state(data)
         return obj
 
+    def compute_tensor(self, interaction, emb_modules):
+        return emb_modules[self.field_name](interaction[self.field_name])
+
 
 class SparseSetEmbSetting(EmbSetting):
     emb_type = EmbType.SPARSE_SET
@@ -227,14 +261,15 @@ class SparseSetEmbSetting(EmbSetting):
         vals = pl.Series(list(self.vocab.values()), dtype=pl.UInt32)
 
         mapped_expr = (
-            expr.list.eval(
-                pl.element()
-                .fill_null("NULL_FALLBACK")
-                .cast(pl.Utf8)
-                .replace_strict(old=keys, new=vals, default=pl.lit(self.oov_idx, dtype=pl.UInt32))
-                .cast(pl.UInt32)
-            )
+            expr
             .list.tail(self.max_len)
+            .list.eval(
+                pl.element().replace_strict(
+                    old=keys,
+                    new=vals,
+                    default=pl.lit(self.oov_idx, dtype=pl.UInt32)
+                )
+            )
             .alias(self.field_name)
         )
         return mapped_expr
@@ -269,6 +304,17 @@ class SparseSetEmbSetting(EmbSetting):
         )
         obj.load_state(data)
         return obj
+
+    def compute_tensor(self, interaction, emb_modules):
+        idx_tensor = interaction[self.field_name]
+        # 1. 查表
+        emb = emb_modules[self.field_name](idx_tensor)
+        # 2. (Pooling)
+        emb = torch.sum(emb, dim=-2)
+        if self.agg == "mean":
+            mask_sum = (idx_tensor > 0).sum(dim=-1, keepdim=True).clamp(min=1)
+            emb = emb / mask_sum
+        return emb
 
 
 class QuantileEmbSetting(EmbSetting):
@@ -348,9 +394,12 @@ class QuantileEmbSetting(EmbSetting):
         obj.is_fitted = data.get("is_fitted", False)
         return obj
 
+    def compute_tensor(self, interaction: dict, emb_modules: nn.ModuleDict) -> torch.Tensor:
+        return emb_modules[self.field_name](interaction[self.field_name])
 
+"""考虑这个可能已经过时了"""
 class IdSeqEmbSetting(EmbSetting):
-    emb_type = EmbType.SPARSE_SEQ
+    emb_type = EmbType.SHARE_SEQ
 
     def __init__(self, field_name: str, seq_len_field_name: str, target_setting: SparseEmbSetting, max_len: int = 50,
                  is_string_format: bool = False, separator: str = ","):
@@ -433,6 +482,9 @@ class IdSeqEmbSetting(EmbSetting):
     def from_dict(cls, data):
         raise NotImplementedError("IdSeqEmbSetting 需由 Manager 统一构建依赖关联。")
 
+    def compute_tensor(self, interaction: dict, emb_modules: nn.ModuleDict) -> torch.Tensor:
+        return emb_modules[self.target_item_setting.field_name](interaction[self.field_name])
+
 
 class MinMaxDenseSetting(EmbSetting):
     emb_type = EmbType.DENSE
@@ -499,3 +551,285 @@ class MinMaxDenseSetting(EmbSetting):
         )
         obj.is_fitted = data.get("is_fitted", False)
         return obj
+
+    def compute_tensor(self, interaction, emb_modules):
+        return interaction[self.field_name].unsqueeze(-1)
+
+"""已废弃，他不适合我的架构"""
+class SeqGroupEmbSetting(EmbSetting):
+    emb_type = EmbType.SEQ_GROUP
+
+    def __init__(self,
+                 group_name: str,
+                 seq_len_field_name: str,
+                 target_dict: Dict[str, EmbSetting],
+                 max_len: int = 50,
+                 is_string_format: bool = False,
+                 separator: str = ",",
+                 combiner: str = "concat"):
+
+        dims = [ts.embedding_dim for ts in target_dict.values()]
+        total_dim = sum(dims) if combiner == "concat" else list(target_dict.values())[0].embedding_dim
+
+        super().__init__(
+            field_name=group_name,
+            embedding_dim=total_dim,
+            source=FeatureSource.SEQ_GROUP,
+            padding_zero=True,
+            use_oov=False
+        )
+
+        self.seq_len_field_name = seq_len_field_name
+        self.target_dict = target_dict
+        self.max_len = max_len
+        self.is_string_format = is_string_format
+        self.separator = separator
+        self.combiner = combiner
+        self.is_fitted = True
+
+    def get_transform_expr(self) -> List[pl.Expr]:
+        exprs = []
+        for seq_col, target in self.target_dict.items():
+            keys = pl.Series(list(target.vocab.keys()), dtype=pl.Utf8)
+            vals = pl.Series(list(target.vocab.values()), dtype=pl.UInt32)
+
+            if isinstance(target, SparseSetEmbSetting):
+                # 【3D 降维打击】处理 List[List[str]]
+                expr = pl.col(seq_col).fill_null([])
+                if self.is_string_format:
+                    expr = expr.list.eval(pl.element().str.split(self.separator))
+
+                mapped_expr = (
+                    expr.list.eval(  # 外层循环: 时间步
+                        pl.element().list.eval(  # 内层循环: 标签集合
+                            pl.element()
+                            .cast(pl.Utf8)
+                            .replace_strict(old=keys, new=vals, default=pl.lit(target.oov_idx, dtype=pl.UInt32))
+                            .cast(pl.UInt32)
+                        ).list.tail(target.max_len)  # 截断集合维度
+                    )
+                    .list.tail(self.max_len)  # 截断时间步维度
+                    .alias(seq_col)
+                )
+            else:
+                # 【2D 常规处理】处理 List[str]
+                expr = pl.col(seq_col).fill_null([])
+                mapped_expr = (
+                    expr.list.eval(
+                        pl.element()
+                        .cast(pl.Utf8)
+                        .replace_strict(old=keys, new=vals, default=pl.lit(target.oov_idx, dtype=pl.UInt32))
+                        .cast(pl.UInt32)
+                    )
+                    .list.tail(self.max_len)
+                    .alias(seq_col)
+                )
+            exprs.append(mapped_expr)
+        return exprs
+
+
+
+    def get_fit_exprs(self) -> List[pl.Expr]:
+        return []
+
+    def parse_fit_result(self, result_df: pl.DataFrame):
+        pass
+
+    @property
+    def vocab_size(self) -> int:
+        return 0
+
+    @property
+    def num_embeddings(self) -> int:
+        return -1
+
+    def to_dict(self):
+        d = super().to_dict()
+        d["seq_len_field_name"] = self.seq_len_field_name
+        d["target_dict"] = {seq_col: target.field_name for seq_col, target in self.target_dict.items()}
+        d["max_len"] = self.max_len
+        d["is_string_format"] = self.is_string_format
+        d["separator"] = self.separator
+        d["combiner"] = self.combiner
+        return d
+
+    @classmethod
+    def from_dict(cls, data):
+        raise NotImplementedError("SeqGroup 涉及对象依赖，需在 Manager 统一反序列化时注入。")
+
+    def compute_tensor(self, interaction, emb_modules):
+        group_embs = []
+        for seq_col, target in self.target_dict.items():
+            mock_interaction = {target.field_name: interaction[seq_col]}
+            emb = target.compute_tensor(mock_interaction, emb_modules)
+            group_embs.append(emb)
+
+        if self.combiner == "concat":
+            return torch.cat(group_embs, dim=-1)
+        elif self.combiner == "sum":
+            return torch.sum(torch.stack(group_embs, dim=0), dim=0)
+
+
+from dataclasses import dataclass
+@dataclass
+class SeqGroupConfig:
+    group_name: str
+    seq_len_field_name: str
+    max_len: int
+    padding_side: Literal['left', 'right']
+
+class SharedVocabSeqSetting(EmbSetting):
+    emb_type = EmbType.SHARE_SEQ
+
+    def __init__(self, field_name: str, target_setting: EmbSetting, group: SeqGroupConfig):
+        super().__init__(field_name, embedding_dim=target_setting.embedding_dim, source=FeatureSource.SEQ)
+        self.target_setting = target_setting
+
+        # 核心：不再自己维护这些变量，而是直接从契约中继承
+        self.group_name = group.group_name
+        self.seq_len_field_name = group.seq_len_field_name
+        self.padding_side = group.padding_side
+        self.max_len = group.max_len
+
+    def compute_tensor(self, interaction: dict, emb_modules: nn.ModuleDict) -> torch.Tensor:
+        mock_interaction = {self.target_setting.field_name: interaction[self.field_name]}
+        return self.target_setting.compute_tensor(mock_interaction, emb_modules)
+
+    def to_dict(self):
+        d = super().to_dict()
+        d["target_field"] = self.target_setting.field_name  # ✨ 只存字符串！
+        d["seq_len_field_name"] = self.seq_len_field_name
+        d["group_name"] = self.group_name
+        d["max_len"] = self.max_len
+        d["padding_side"] = self.padding_side
+        return d
+
+    def get_fit_exprs(self) -> List[pl.Expr]:
+        return []
+
+    def parse_fit_result(self, result_df: pl.DataFrame):
+        pass
+
+    def get_transform_expr(self) -> pl.Expr:
+        # 1. 提取 target_setting 已经拟合好的词表和 OOV 索引
+        keys = pl.Series(list(self.target_setting.vocab.keys()), dtype=pl.Utf8)
+        vals = pl.Series(list(self.target_setting.vocab.values()), dtype=pl.UInt32)
+        oov_fallback = pl.lit(self.target_setting.oov_idx, dtype=pl.UInt32)
+
+        # 2. 清洗基础列，防空指针
+        expr = pl.col(self.field_name).fill_null([])
+        if getattr(self, "is_string_format", False):
+            expr = expr.list.eval(pl.element().str.split(getattr(self, "separator", ",")))
+
+        if isinstance(self.target_setting, SparseSetEmbSetting):
+            # 【3D 降维打击】处理 List[List[str]] (例如: history_genres)
+            mapped_expr = (
+                expr.list.eval(  # 外层循环: 时间步
+                    pl.element().list.eval(  # 内层循环: 集合元素
+                        pl.element()
+                        .cast(pl.Utf8)
+                        .replace_strict(old=keys, new=vals, default=oov_fallback)
+                        .cast(pl.UInt32)
+                    ).list.tail(self.target_setting.max_len)  # 截断集合维度
+                )
+                .list.tail(self.max_len)  # 截断时间步维度
+                .alias(self.field_name)
+            )
+        else:
+            # 【2D 常规处理】处理 List[str] (例如: history_movie_id)
+            mapped_expr = (
+                expr.list.eval(
+                    pl.element()
+                    .cast(pl.Utf8)
+                    .replace_strict(old=keys, new=vals, default=oov_fallback)
+                    .cast(pl.UInt32)
+                )
+                .list.tail(self.max_len)  # 截断时间步维度
+                .alias(self.field_name)
+            )
+
+        return mapped_expr
+
+    @classmethod
+    def from_dict(cls, data):
+        raise NotImplementedError("序列配置对象需在 Python 代码中显式构建依赖。")
+
+
+class SparseSeqEmbSetting(EmbSetting):
+    emb_type = EmbType.SPARSE_SEQ
+
+    def __init__(self, field_name: str, group: SeqGroupConfig, embedding_dim: int = 16,   # 仅作为元数据供下游 Dataset 读取
+                 is_string_format: bool = False, separator: str = ",",
+                 padding_zero: bool = True, min_freq: int = 1, use_oov: bool = True,):
+        super().__init__(field_name, embedding_dim, FeatureSource.SEQ, padding_zero, use_oov)
+        self.seq_len_field_name = group.seq_len_field_name
+        self.max_len = group.max_len
+        self.group_name = group.group_name
+        self.padding_side = group.padding_side
+
+        self.is_string_format = is_string_format
+        self.separator = separator
+        self.min_freq = min_freq
+
+    def get_fit_exprs(self) -> List[pl.Expr]:
+        exploded = explode_expr(self.field_name, self.is_string_format, self.separator)
+        return [exploded.value_counts().implode().alias(self.field_name)]
+
+    def parse_fit_result(self, result_df: pl.DataFrame):
+        rows = result_df.get_column(self.field_name).to_list()[0]
+        col_name = self.field_name
+        valid_vals = sorted([
+            r[col_name] for r in rows
+            if r[col_name] is not None and r.get("count", r.get("counts", 0)) >= self.min_freq
+        ])
+        self._build_vocab_indices(valid_vals)
+
+    def get_transform_expr(self) -> List[pl.Expr]:
+        expr = clear_seq_expr(self.field_name, self.is_string_format, self.separator)
+        keys = pl.Series(list(self.vocab.keys()), dtype=pl.Utf8)
+        vals = pl.Series(list(self.vocab.values()), dtype=pl.UInt32)
+
+        # 只查表和截断，绝对不补齐，保持变长 List 落盘，极致节省硬盘空间！
+        mapped_expr = (
+            expr.list.eval(
+                pl.element()
+                .fill_null("NULL_FALLBACK")
+                .cast(pl.Utf8)
+                .replace_strict(old=keys, new=vals, default=pl.lit(self.oov_idx, dtype=pl.UInt32))
+                .cast(pl.UInt32)
+            )
+            .list.tail(self.max_len)
+        )
+
+        # 顺手计算真实长度
+        len_expr = mapped_expr.list.len().cast(pl.UInt32).alias(self.seq_len_field_name)
+
+        return [mapped_expr.alias(self.field_name), len_expr]
+
+    def to_dict(self):
+        d = super().to_dict()
+        d["seq_len_field_name"] = self.seq_len_field_name
+        d["group_name"] = self.group_name
+        d["min_freq"] = self.min_freq
+        d["max_len"] = self.max_len
+        d["padding_side"] = self.padding_side  # 记录到 JSON Schema 中
+        d["is_string_format"] = self.is_string_format
+        d["separator"] = self.separator
+        return d
+
+    def load_state(self, state_dict: Dict[str, Any]):
+        super().load_state(state_dict)
+        self.seq_len_field_name = state_dict.get("seq_len_field_name")
+        self.group_name = state_dict.get("group_name")
+        self.min_freq = state_dict.get("min_freq", 1)
+        self.max_len = state_dict.get("max_len", 50)
+        self.padding_side = state_dict.get("padding_side", "right")  # 从 JSON 恢复
+        self.is_string_format = state_dict.get("is_string_format", False)
+        self.separator = state_dict.get("separator", ",")
+
+    @classmethod
+    def from_dict(cls, data):
+        raise NotImplementedError("序列配置对象需在 Python 代码中显式构建依赖。")
+
+    def compute_tensor(self, interaction, emb_modules) -> torch.Tensor:
+        return emb_modules[self.field_name](interaction[self.field_name])

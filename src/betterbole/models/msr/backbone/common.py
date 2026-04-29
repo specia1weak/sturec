@@ -2,6 +2,8 @@ from collections.abc import Iterable
 
 from betterbole.models.utils.general import MLP
 
+def default_dims(input_dim):
+    return [input_dim, input_dim // 2, 128]
 
 def to_dims(value, default):
     if value is None:
@@ -17,7 +19,6 @@ def to_dims(value, default):
     if not dims:
         raise ValueError("dims can not be empty")
     return dims
-
 
 def default_backbone_dims(input_dim: int, depth: int = 2) -> tuple[int, ...]:
     input_dim = max(1, int(input_dim))

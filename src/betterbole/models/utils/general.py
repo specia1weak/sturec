@@ -93,6 +93,54 @@ class MLP(nn.Module):
     def forward(self, x):
         return self.net(x)
 
+
+import torch
+import torch.nn as nn
+
+
+class FeatureBifurcator(nn.Module):
+    def __init__(self, num_features, feature_dim=-1, mean_dims=0, normalize_var=False, stack_dim=1):
+        """
+        通用特征分化组件：将任意特征分离为“静态可学习基准(Bias)”和“零均值动态波动(Fluctuation)”
+
+        :param num_features: 特征的通道数（用于初始化可学习的静态 Bias）
+        :param feature_dim: 特征所在的维度索引。对于 Linear 是 -1，对于 Conv2d(B,C,H,W) 通常是 1
+        :param mean_dims: 在哪些维度上计算均值。
+                          - Batch级别求均值: 0
+                          - 图像空间求均值 (InstanceNorm风格): (2, 3)
+                          - 特征内部求均值 (LayerNorm风格): feature_dim
+        :param normalize_var: 是否除以标准差（True 则类似原版的 BN/LN，False 则只做纯粹的 0 均值化）
+        :param stack_dim: 最终 stack 拼接的维度。默认在 dim=1 堆叠，生成 [..., 2, ...] 的形状
+        """
+        super().__init__()
+        self.num_features = num_features
+        self.feature_dim = feature_dim
+        self.mean_dims = mean_dims
+        self.normalize_var = normalize_var
+        self.stack_dim = stack_dim
+        self.eps = 1e-5
+
+        # 初始化静态基准 (可学习的 Bias)
+        self.bias = nn.Parameter(torch.zeros(num_features))
+
+    def forward(self, x):
+        # 1. 提取动态波动 (Fluctuation): 减去均值
+        mean_val = x.mean(dim=self.mean_dims, keepdim=True)
+        fluctuation = x - mean_val
+
+        # 可选：是否进行方差归一化缩放
+        if self.normalize_var:
+            var_val = x.var(dim=self.mean_dims, keepdim=True, unbiased=False)
+            fluctuation = fluctuation / torch.sqrt(var_val + self.eps)
+
+        # 2. 形状对齐：将 1D bias 动态广播成与输入 x 完全相同的形状
+        # 无论 x 是 [B, D] 还是 [B, C, H, W]，自动在 feature_dim 展开
+        bias_shape = [1] * x.dim()
+        bias_shape[self.feature_dim] = self.num_features
+        bias_expanded = self.bias.view(*bias_shape).expand_as(x)
+
+        return bias_expanded, fluctuation
+
 class BifurcatedLinear(nn.Module):
     def __init__(self, input_dim, output_dim, zero_mean_dim='batch'):
         """
@@ -120,8 +168,7 @@ class BifurcatedLinear(nn.Module):
         raw_fluctuation = self.linear(x)
         fluctuation = self.zero_mean_norm(raw_fluctuation)  # shape: [Batch, OutputDim]
         bias_expanded = self.bias.unsqueeze(0).expand(batch_size, -1)
-        output = torch.stack([bias_expanded, fluctuation], dim=1)
-        return output
+        return bias_expanded, fluctuation
 
 class BifurcatedMLP(nn.Module):
     def __init__(self, *dims, dropout_rate: float = 0.0, activation: str = 'relu', batch_norm: bool = False):
@@ -142,12 +189,13 @@ class BifurcatedMLP(nn.Module):
                     layers.append(nn.Dropout(dropout_rate))
 
         self.hidden_net = nn.Sequential(*layers)
-        self.last_layer = BifurcatedLinear(dims[-2], dims[-1])
+        self.last_layer = nn.Linear(dims[-2], dims[-1])
+        self.bifurcator = FeatureBifurcator(dims[-1])
         self._init_weights(activation)
 
     @property
     def bias(self):
-        return self.last_layer.bias
+        return self.bifurcator.bias
 
     def _init_weights(self, activation):
         for m in self.modules():
@@ -160,7 +208,7 @@ class BifurcatedMLP(nn.Module):
                     nn.init.zeros_(m.bias)
 
     def forward(self, x):
-        return self.last_layer(self.hidden_net(x))
+        return self.bifurcator(self.last_layer(self.hidden_net(x)))
 
 class ModuleFactory:
     @staticmethod

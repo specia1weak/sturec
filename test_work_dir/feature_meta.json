@@ -1,0 +1,84 @@
+[
+    {
+        "type": "SPARSE",
+        "field_name": "user_id",
+        "embedding_size": 8,
+        "num_embeddings": 5,
+        "vocab_size": 3,
+        "feature_source": "USER",
+        "is_fitted": true,
+        "padding_zero": true,
+        "use_oov": true,
+        "vocab": {
+            "u1": 1,
+            "u2": 2,
+            "u3": 3
+        },
+        "oov_idx": 4,
+        "min_freq": 1
+    },
+    {
+        "type": "SPARSE",
+        "field_name": "item_id",
+        "embedding_size": 8,
+        "num_embeddings": 5,
+        "vocab_size": 3,
+        "feature_source": "ITEM",
+        "is_fitted": true,
+        "padding_zero": true,
+        "use_oov": true,
+        "vocab": {
+            "i1": 1,
+            "i2": 2,
+            "i3": 3
+        },
+        "oov_idx": 4,
+        "min_freq": 1
+    },
+    {
+        "type": "SPARSE_SET",
+        "field_name": "tags",
+        "embedding_size": 12,
+        "num_embeddings": 7,
+        "vocab_size": 5,
+        "feature_source": "ITEM",
+        "is_fitted": true,
+        "padding_zero": true,
+        "use_oov": true,
+        "vocab": {
+            "action": 1,
+            "comedy": 2,
+            "horror": 3,
+            "romance": 4,
+            "sci-fi": 5
+        },
+        "oov_idx": 6,
+        "min_freq": 1,
+        "max_len": 3,
+        "is_string_format": true,
+        "separator": ",",
+        "agg": "sum"
+    },
+    {
+        "type": "SEQ_GROUP",
+        "field_name": "hist_seq_group",
+        "embedding_size": 20,
+        "num_embeddings": -1,
+        "vocab_size": 0,
+        "feature_source": "INTERACTION",
+        "is_fitted": true,
+        "padding_zero": true,
+        "use_oov": false,
+        "vocab": {},
+        "oov_idx": -1,
+        "seq_len_field_name": "seq_len",
+        "target_dict": {
+            "item_id_seq": "item_id",
+            "tags_seq": "tags"
+        },
+        "max_len": 5,
+        "is_string_format": true,
+        "separator": ",",
+        "combiner": "concat"
+    }
+]

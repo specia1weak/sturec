@@ -6,7 +6,7 @@ import polars as pl
 
 def get_general_info(df: pl.DataFrame) -> dict:
     """
-    返回包含行数、列名、类型、不重复数量以及数值类型五数概括的字典。
+    返回包含行数、列名、类型、不重复数量、空值数量以及数值类型五数概括的字典。
     """
     info = {
         "rows": df.height,
@@ -16,11 +16,15 @@ def get_general_info(df: pl.DataFrame) -> dict:
     for col_name in df.columns:
         series = df[col_name]
         dtype = series.dtype
+
+        # 获取基础统计信息
         n_unique = series.n_unique()
+        n_nulls = series.null_count()  # 新增：计算空值数量
 
         col_info = {
             "type": str(dtype),
-            "n_unique": n_unique
+            "n_unique": n_unique,
+            "null_count": n_nulls  # 新增：存入字典
         }
 
         # 判断是否为数值类型，如果是则计算五维数据 (Min, Q1, Median, Q3, Max)
@@ -39,6 +43,7 @@ def get_general_info(df: pl.DataFrame) -> dict:
                 col_info["5_number_summary"] = "All Nulls"
 
         info["cols"][col_name] = col_info
+
     return info
 
 

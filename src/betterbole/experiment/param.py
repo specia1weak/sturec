@@ -1,13 +1,16 @@
 import argparse
 import dataclasses
 from dataclasses import dataclass, fields, field, asdict
+from typing import get_args, get_origin, Literal, get_type_hints
 
 
 @dataclass
 class ConfigBase:
-    experiment_name: str = "untitled"
+    experiment_name: str = "untitled" # 提示这次实验的名字
+    dataset_name: str = "unknown" # 影响workdir的设置
     seed: int = 2026
     device: str = "cpu"
+    max_epochs: int = 100
 
     extras: dict = field(default_factory=dict)
     def __getattr__(self, name):
@@ -75,6 +78,7 @@ def seed_everything(seed=42):
 class ParamManager:
     def __init__(self, config_class):
         self.config_class = config_class
+        self.resolved_type_hints = get_type_hints(config_class)
 
         # 1. 基础类型转换注册表：消除对 bool 等基本类型的 if-else
         self.type_parsers = {
@@ -94,8 +98,12 @@ class ParamManager:
         self.instance_registry[field_name] = mapping_dict
         return self
 
+    def _get_field_type(self, field):
+        return self.resolved_type_hints.get(field.name, field.type)
+
     def _get_parser_action(self, field):
         """决定如何将命令行的字符串解析为目标对象"""
+        field_type = self._get_field_type(field)
 
         # 优先级1：如果字段被注册了实例映射器 (例如 optimizer 字段)
         if field.name in self.instance_registry:
@@ -105,9 +113,16 @@ class ParamManager:
                     raise ValueError(f"Invalid option '{x}' for {field.name}. Available: {list(mapping.keys())}")
                 return mapping[x]
             return instance_factory
-        if field.type in self.type_parsers:
-            return self.type_parsers[field.type]
-        return field.type
+        if get_origin(field_type) is Literal:
+            literal_values = get_args(field_type)
+            if not literal_values:
+                raise ValueError(f"Literal field '{field.name}' has no candidate values")
+            return type(literal_values[0])
+        if get_origin(field_type) is list:
+            return self.type_parsers[list]
+        if field_type in self.type_parsers:
+            return self.type_parsers[field_type]
+        return field_type
 
     def build(self, **code_kwargs):
         # 1. 【修复点】安全提取基类默认字段（同时兼容 default 和 default_factory）
@@ -176,7 +191,8 @@ class ParamManager:
         lines.append(f"{'Parameter':<18} | {'Type':<12} | {'Default'}")
         lines.append("-" * 60)
         for f in fields(self.config_class):
-            type_name = getattr(f.type, '__name__', str(f.type))
+            field_type = self._get_field_type(f)
+            type_name = getattr(field_type, '__name__', str(field_type))
             if f.default is dataclasses.MISSING and f.default_factory is not dataclasses.MISSING:
                 default_val = "<factory>"
             elif f.default is dataclasses.MISSING:

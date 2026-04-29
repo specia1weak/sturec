@@ -172,6 +172,9 @@ class M3oEBackbone(MSRBackbone):
                 f"{self.factor_mode}. Choose from global, dynamic, domain, beta_domain."
             )
 
+        self.last_inner_factor = None
+        self.last_outer_factor = None
+
     def forward(self, x: torch.Tensor, domain_ids: torch.Tensor) -> torch.Tensor:
         domain_ids = domain_ids.long()
         star_outputs = []
@@ -199,6 +202,7 @@ class M3oEBackbone(MSRBackbone):
                 own_domain_weight = self.domain_balance_factor(domain_ids).unsqueeze(-1)
             else:
                 own_domain_weight = self.domain_balance_factor()
+            self.last_inner_factor = own_domain_weight.detach()
             other_domain_weight = (1.0 - own_domain_weight) / (self.num_domains - 1)
             all_domain_state = domain_outputs.sum(dim=1, keepdim=True)
             balanced_domain_outputs = (
@@ -212,21 +216,11 @@ class M3oEBackbone(MSRBackbone):
         domain_expert_factor = self.domain_expert_factor()
         if isinstance(self.domain_expert_factor, DomainBalanceFactor):
             domain_expert_factor = self.domain_expert_factor(domain_ids)
+        self.last_outer_factor = domain_expert_factor.detach()
         return shared_state + domain_expert_factor * domain_state
 
-    def get_parameter_groups(self):
-        """
-        将参数分为架构参数(Architecture)和普通参数(Weights)
-        注意：现在返回的是 (name, param) 的元组列表
-        """
-        arch_named_params = []
-        base_named_params = []
-        for name, param in self.named_parameters():
-            if 'balance_factor' in name or 'balance_gate' in name:
-                arch_named_params.append((name, param))
-            else:
-                base_named_params.append((name, param))
-        return arch_named_params, base_named_params
+    def arch_parameters_name(self):
+        return ('balance_factor', 'balance_gate')
 
 
 class M3oEVersion1Backbone(M3oEBackbone):
@@ -311,7 +305,7 @@ def create_m3oe(
 
 if __name__ == '__main__':
     m3oe, _ = create_m3oe()
-    arch_params, base_params = m3oe.get_parameter_groups()
+    arch_params, base_params = m3oe.arch_parameters()
     optimizer_base = torch.optim.Adam(
         base_params,
         lr=1e-3,

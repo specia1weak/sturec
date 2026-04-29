@@ -15,8 +15,8 @@ def set_all():
     ignore_future_warning()
     change_root_workdir()
 
-def preset_workdir(experiment_name: str="untitled"):
-    return WORKSPACE / experiment_name
+def preset_workdir(dataset_name: str="untitled"):
+    return WORKSPACE / dataset_name
 
 if __name__ == '__main__':
     print(preset_workdir())

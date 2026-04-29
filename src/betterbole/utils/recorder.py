@@ -4,7 +4,7 @@ import torch.nn as nn
 from collections import deque
 import polars as pl
 
-class IndividualReLUMonitor:
+class IndividualReLURecorder:
     def __init__(self, model, window_size=50):
         self.window_size = window_size
         self.zero_ratios = {}  # 字典：存放每个 ReLU 层的历史记录队列
@@ -53,7 +53,7 @@ class IndividualReLUMonitor:
             h.remove()
 
 
-class ExplicitFeatureMonitor:
+class ExplicitFeatureRecorder:
     def __init__(self, window_size=50):
         self.window_size = window_size
         self.features = {}

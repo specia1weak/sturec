@@ -1,16 +1,23 @@
 # ==========================================
 # 2. 调度层 (Manager Layer) - 计算图统筹
 # ==========================================
+import gc
 import json
+import os
 from pathlib import Path
 from typing import Union, Literal
-
+import pyarrow.parquet as pq
 import polars as pl
 
 from betterbole.data.split import SPLIT_STRATEGIES, SplitContext
-from betterbole.emb.schema import IdSeqEmbSetting, SparseEmbSetting, SparseSetEmbSetting, EmbSetting, EmbType
+from betterbole.emb.schema import IdSeqEmbSetting, SparseEmbSetting, SparseSetEmbSetting, EmbSetting, EmbType, \
+    SeqGroupEmbSetting, SharedVocabSeqSetting, SparseSeqEmbSetting
 from betterbole.core.enum_type import FeatureSource
 from typing import Any, List, Iterable
+
+from betterbole.utils.sort import sort_parquet_inplace
+
+
 def ensure_list(value: Any) -> List[Any]:
     if value is None:
         return []
@@ -101,11 +108,14 @@ class SchemaManager:
         else:
             print("[+] 所有特征已就绪，跳过 Fit 扫描。")
         print("[*] 阶段二：构建 Transform 计算图...")
-        transform_exprs = [
-            setting.get_transform_expr()
-            for setting in self.settings
-            if setting.emb_type != EmbType.UNKNOWN
-        ]
+        transform_exprs = []
+        for setting in self.settings:
+            if setting.emb_type != EmbType.UNKNOWN:
+                expr = setting.get_transform_expr()
+                if isinstance(expr, list):
+                    transform_exprs.extend(expr)  # 如果是列表，展平加入
+                else:
+                    transform_exprs.append(expr)
         print(f"[*] 启动流式转换计算，引擎正在将数据写入 {output_parquet} ...")
         lazy_df.with_columns(transform_exprs) \
             .sink_parquet(output_parquet)
@@ -113,31 +123,72 @@ class SchemaManager:
         print("[+] 预处理全流程结束！")
         return pl.scan_parquet(output_parquet)
 
-    def fit(self, train_raw_lf: pl.LazyFrame):
+
+    def fit(self, train_raw_lf: pl.LazyFrame, low_memory: bool = False):
         """
-        阶段一：仅使用训练集拟合统计量和词表
+        阶段一：仅使用训练集拟合统计量和词表。
+
+        :param train_raw_lf: Polars LazyFrame 格式的训练数据
+        :param low_memory: 是否开启低内存模式。
+                           - False (默认，推荐): 单次全表扫描，所有特征并行计算。速度极快，但内存开销较大。
+                           - True (内存受限时): 逐个特征扫描。内存占用极低，但 I/O 放大，耗时成倍增加。
         """
         if self.meta_filepath.exists():
             self.load_schema()
             return
-        print("[*] 正在执行计算图截断，避免重复计算...")
-        print("[*] 启动单次表扫描获取统计量...")
-        fit_exprs = [expr for s in self.settings if not s.is_fitted for expr in s.get_fit_exprs()]
-        if fit_exprs:
-            fit_result = train_raw_lf.select(fit_exprs).collect()
-            for setting in self.settings:
-                if not setting.is_fitted:
+        unfitted_settings = [s for s in self.settings if not s.is_fitted]
+        if not unfitted_settings:
+            print("[+] 所有特征已就绪，跳过 Fit 扫描。")
+            self.save_schema()
+            return
+
+        if low_memory:
+            print(f"[*] 启动极低内存 Fit 模式，将对 {len(unfitted_settings)} 个特征进行逐列扫描 (耗时较长)...")
+            for i, setting in enumerate(unfitted_settings):
+                fit_exprs = setting.get_fit_exprs()
+                if not fit_exprs:
+                    continue
+                print(f"    -> 正在拟合 [{i + 1}/{len(unfitted_settings)}]: {setting.field_name}")
+                col_fit_result = (
+                    train_raw_lf
+                    .select(fit_exprs)
+                    .collect(engine="streaming")
+                )
+                setting.parse_fit_result(col_fit_result)
+                del col_fit_result # 显式释放哈希表内存
+            print("[+] 逐列统计量与词表构建完成。")
+        else:
+            print(f"[*] 启动高性能并行 Fit 模式，单次扫描全表计算 {len(unfitted_settings)} 个统计量...")
+            fit_exprs = [expr for s in unfitted_settings for expr in s.get_fit_exprs()]
+            if fit_exprs:
+                # 即使是并行，也建议开启 streaming=True，让 Polars 底层自己尽力优化和 Spilling
+                fit_result = train_raw_lf.select(fit_exprs).collect(engine="streaming")
+                for setting in unfitted_settings:
                     setting.parse_fit_result(fit_result)
-            print("[+] 词表与映射规则构建完成。")
         self.save_schema()
+
+    def make_checkpoint(self, lf, file_name="custom_checkpoint.parquet", redo=True, sort_by=None, descending=False):
+        path = self.work_dir / file_name
+        if not path.exists() or redo:
+            self._make_checkpoint(lf, file_name)
+            if sort_by is not None:
+                sort_parquet_inplace(path, sort_by, descending=descending, temp_dir=self.work_dir)
+            return pl.scan_parquet(path)
+        else:
+            return pl.scan_parquet(path)
 
     def transform(self, raw_lf: pl.LazyFrame) -> pl.LazyFrame:
         """
         阶段二：根据已固化的 Schema 进行流式转换
         """
-        transform_exprs = [
-            s.get_transform_expr() for s in self.settings if s.emb_type != EmbType.UNKNOWN
-        ]
+        transform_exprs = []
+        for s in self.settings:
+            if s.emb_type != EmbType.UNKNOWN:
+                expr = s.get_transform_expr()
+                if isinstance(expr, list):
+                    transform_exprs.extend(expr)
+                else:
+                    transform_exprs.append(expr)
         return raw_lf.with_columns(transform_exprs)
 
     def _make_checkpoint(self, lazy_df, file_name="temp_checkpoint.parquet"):
@@ -224,12 +275,12 @@ class SchemaManager:
         split_paths = str(train_path), str(valid_path), str(test_path)
         if not redo and (train_path.exists() or valid_path.exists() or test_path.exists()):
             return split_paths
-
-        all_lf = [train_lf, valid_lf, test_lf]
-        for lf, save_path in zip(all_lf, split_paths):
+        gc.collect()
+        for lf, save_path, name in zip([train_lf, valid_lf, test_lf], split_paths, ["Train", "Valid", "Test"]):
             if lf is not None:
-                lf.sink_parquet(save_path)
-
+                print(f"    -> 正在写入 {name} 集合到 {save_path}")
+                lf.sink_parquet(str(save_path),)
+        print("[+] 所有数据落盘完成！")
         return split_paths
 
     def save_schema(self):
@@ -276,13 +327,20 @@ class SchemaManager:
     def fields(self):
         fields = []
         for setting in self.settings:
-            fields.append(setting.field_name)
-            if isinstance(setting, IdSeqEmbSetting):
+            if isinstance(setting, SeqGroupEmbSetting):
+                fields.extend([seq_field for seq_field in setting.target_dict.keys()])
                 fields.append(setting.seq_len_field_name)
+                continue
+            fields.append(setting.field_name)
+            if isinstance(setting, (IdSeqEmbSetting, SharedVocabSeqSetting, SparseSeqEmbSetting)):
+                fields.append(setting.seq_len_field_name)
+
+
         for ctx_field in (self.time_field, *self.label_fields, *self.domain_fields):
             if ctx_field is not None and ctx_field not in fields:
                 fields.append(ctx_field)
         return fields
+
 
 # ==========================================
 # 3. 使用示例 (假设使用 KuaiRand)

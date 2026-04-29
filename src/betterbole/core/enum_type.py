@@ -96,5 +96,7 @@ class FeatureSource(Enum):
     ITEM = "item"
     USER_ID = "user_id"
     ITEM_ID = "item_id"
+    SEQ = "seq"
+    SEQ_GROUP = "seq_group"
     KG = "kg"
     NET = "net"

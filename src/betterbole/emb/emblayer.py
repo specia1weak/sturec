@@ -1,13 +1,16 @@
-from typing import Iterable, List, Dict, Union, Literal
+from typing import Iterable, List, Dict, Union, Literal, TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 import torch
-from betterbole.emb.schema import EmbType, EmbSetting, IdSeqEmbSetting, SparseSetEmbSetting
+from betterbole.emb.schema import EmbType, EmbSetting, IdSeqEmbSetting, SparseSetEmbSetting, SeqGroupEmbSetting
 from betterbole.core.enum_type import FeatureSource
 from torch import nn
 
 from betterbole.core.interaction import Interaction
+
+if TYPE_CHECKING:
+    from betterbole.emb.manager import SchemaManager
 
 
 # 将settings中的col分成用户侧和物品侧，BoleEmbLayer会把宽表Interaction 变成对应的Dict Embedding
@@ -17,20 +20,27 @@ SPLIT_METHODS = Literal["source", "name", "none", None]
 
 
 class RecEmbedding(nn.Module):
-    def __init__(self, num_embeddings, embedding_dim, padding_idx=0, init_std=1e-3):
+    def __init__(self, num_embeddings, embedding_dim, padding_idx=0, init_method='normal', init_std=1e-4):
         super(RecEmbedding, self).__init__()
         self.embedding = nn.Embedding(
             num_embeddings=num_embeddings,
             embedding_dim=embedding_dim,
             padding_idx=padding_idx
         )
+        self.init_method = init_method
         self.init_std = init_std
         self.reset_parameters()
 
     def reset_parameters(self):
-        nn.init.normal_(self.embedding.weight, mean=0.0, std=self.init_std)
+        if self.init_method == 'normal':
+            nn.init.normal_(self.embedding.weight, mean=0.0, std=self.init_std)
+        elif self.init_method == 'xavier':
+            nn.init.xavier_uniform_(self.embedding.weight.data)
+        else:
+            pass
         if self.embedding.padding_idx is not None:
-            nn.init.constant_(self.embedding.weight[self.embedding.padding_idx], 0.0)
+            with torch.no_grad():
+                self.embedding.weight[self.embedding.padding_idx].fill_(0)
 
     def forward(self, x):
         return self.embedding(x)
@@ -154,7 +164,7 @@ class CustomSideEmb(SideEmb):
     def __init__(self, all_settings: Iterable[EmbSetting]):
         super().__init__(all_settings)
 
-
+"""已废弃"""
 class ProfileEncoder(nn.Module):
     """
     全自动静态画像编码器：告别硬编码，完全数据驱动！
@@ -188,7 +198,7 @@ class ProfileEncoder(nn.Module):
             field = setting.field_name
 
             # --- 分支 A：处理变长序列特征 (必须 Padding) ---
-            if setting.emb_type in (EmbType.SPARSE_SEQ, EmbType.SPARSE_SET):
+            if setting.emb_type in (EmbType.SPARSE_SET, ):
                 max_len = getattr(setting, 'max_len', 50)  # 从 setting 获取最大长度
                 padded_matrix = self._pad_sequences(df[field], max_len)
 
@@ -278,24 +288,97 @@ class SeqEmbedder(nn.Module):
         return emb_seq, seq_len
 
 
-class EmbView(nn.Module):
+class EmbView:
     """
     轻量级特征视图：
     本身没有任何参数，只负责将请求转发给底层的 OmniEmbLayer，并自动绑定 target_sources。
     """
-    def __init__(self, omni_layer: 'OmniEmbLayer', target_sources: Union[FeatureSource, Iterable[FeatureSource]]):
+    def __init__(self,
+                 omni_layer: 'OmniEmbLayer',
+                 target_sources: Union[FeatureSource, Iterable[FeatureSource]] = None,
+                 include_fields: Iterable[str] = None,
+                 exclude_fields: Iterable[str] = None):
         super().__init__()
         # 引用同一个巨无霸底座
         self.omni = omni_layer
         self.target_sources = target_sources
+        self.include_fields = tuple(include_fields) if include_fields is not None else None
+        self.exclude_fields = tuple(exclude_fields) if exclude_fields is not None else None
 
     def forward(self, interaction, split_by: SPLIT_METHODS = "none") -> Union[Dict[Union[str, FeatureSource], torch.Tensor], torch.Tensor, None]:
-        return self.omni(interaction, split_by=split_by, target_sources=self.target_sources)
+        return self.omni(
+            interaction,
+            split_by=split_by,
+            target_sources=self.target_sources,
+            include_fields=self.include_fields,
+            exclude_fields=self.exclude_fields,
+        )
+
+    def __call__(self, interaction, split_by: SPLIT_METHODS = "none") -> Union[
+        Dict[Union[str, FeatureSource], torch.Tensor], torch.Tensor, None]:
+        return self.omni(
+            interaction,
+            split_by=split_by,
+            target_sources=self.target_sources,
+            include_fields=self.include_fields,
+            exclude_fields=self.exclude_fields,
+        )
 
     @property
     def embedding_dim(self) -> int:
-        # 顺便恢复你之前喜欢的维度属性查询
-        return self.omni.get_output_dim(self.target_sources)
+        return self.omni.get_output_dim(
+            target_sources=self.target_sources,
+            include_fields=self.include_fields,
+            exclude_fields=self.exclude_fields,
+        )
+
+
+class SeqGroupView(EmbView):
+    """
+    专为序列组设计的强化版视图：
+    不仅能获取序列特征，还能自动获取严格对齐的 Target 特征和序列长度。
+    """
+
+    def __init__(self, omni_layer, group_name: str, include_fields: Iterable[str]):
+        super().__init__(omni_layer, include_fields=include_fields)
+        self.group_name = group_name
+
+        # 预加载对齐的 target 设置与 seq_len 字段
+        self.target_settings = []
+        self.seq_len_field = None
+        self._target_forward_valid = True
+
+        for field in self.include_fields:
+            setting = next((s for s in self.omni.settings if s.field_name == field), None)
+            if setting is None:
+                continue
+
+            if hasattr(setting, 'target_setting'):
+                self.target_settings.append(setting.target_setting)
+            else:
+                self._target_forward_valid = False
+
+            if self.seq_len_field is None and hasattr(setting, 'seq_len_field_name'):
+                self.seq_len_field = setting.seq_len_field_name
+
+    def forward_target(self, interaction, split_by: str = "none"):
+        # 实际上所有setting必须拥有target_setting forward_target才不会有歧义
+        if split_by == "source":
+            raise ValueError("Target sequence view strictly supports split_by='none' or 'name'.")
+
+        computed_results = []
+        for target_s in self.target_settings:
+            emb = target_s.compute_tensor(interaction, self.omni.emb_modules)
+            computed_results.append((target_s, emb))
+        return self.omni.format_output(computed_results, split_by)
+
+    def fetch_all(self, interaction):
+        """一键打包返回：(序列特征拼接, 目标特征拼接, 序列长度)"""
+        seq_emb = self.forward(interaction, split_by="none")
+        tar_emb = self.forward_target(interaction, split_by="none") if self._target_forward_valid else ValueError("存在部分setting没有target_setting，函数中断")
+        seq_len = interaction[self.seq_len_field] if self.seq_len_field else None
+
+        return seq_emb, tar_emb, seq_len
 
 class OmniEmbLayer(nn.Module):
     """
@@ -303,26 +386,24 @@ class OmniEmbLayer(nn.Module):
     内部纳管所有 settings。forward 时可通过 target_sources 动态指定范围。
     彻底取代 SideEmb、UserSideEmb、ItemSideEmb 等一众子类。
     """
-    def __init__(self, emb_settings: Iterable[EmbSetting]):
+    def __init__(self, emb_settings: Iterable[EmbSetting] = None, manager: 'SchemaManager' = None):
         super(OmniEmbLayer, self).__init__()
+        if manager is not None:
+            emb_settings = manager.settings
+        if emb_settings is None:
+            raise ValueError("OmniEmbLayer requires manager or emb_settings.")
+
+        self.manager = manager
         self.settings: List[EmbSetting] = list(emb_settings)
         self.emb_modules = nn.ModuleDict()
         self.source2settings: Dict[FeatureSource, List[EmbSetting]] = {}
 
-        # 1. 自动按 Source 归类并初始化底层 Embedding
-        for setting in self.settings:
-            if self.source2settings.get(setting.source) is None:
-                self.source2settings[setting.source] = []
-            self.source2settings[setting.source].append(setting)
+        self.group2fields = {}
+        self._init_embedding()
 
-            if setting.emb_type in (EmbType.DENSE,):
-                continue
-
-            self.emb_modules[setting.field_name] = RecEmbedding(
-                num_embeddings=setting.num_embeddings,
-                embedding_dim=setting.embedding_dim,
-                padding_idx={True: 0, False: None}[setting.padding_zero]
-            )
+        self.seq_groups = {}
+        for g_name, fields in self.group2fields.items():
+            self.seq_groups[g_name] = SeqGroupView(self, group_name=g_name, include_fields=fields)
 
         self.whole = EmbView(self, target_sources=(FeatureSource.USER_ID, FeatureSource.USER,
                                                    FeatureSource.ITEM_ID, FeatureSource.ITEM,
@@ -334,73 +415,108 @@ class OmniEmbLayer(nn.Module):
         self.user_id = EmbView(self, target_sources=(FeatureSource.USER_ID,))
         self.item_id = EmbView(self, target_sources=(FeatureSource.ITEM_ID,))
 
+
+        domain_fields = tuple(manager.domain_fields) if manager is not None else tuple()
+        domain_field = manager.domain_field if manager is not None else None
+        self.domain = EmbView(self, include_fields=domain_fields)
+        self.domain_id = EmbView(
+            self,
+            include_fields=((domain_field,) if domain_field is not None else tuple()),
+        )
+        self.whole_without_domain = EmbView(
+            self,
+            target_sources=(FeatureSource.USER_ID, FeatureSource.USER,
+                            FeatureSource.ITEM_ID, FeatureSource.ITEM,
+                            FeatureSource.INTERACTION),
+            exclude_fields=domain_fields,
+        )
+        self.inter_without_domain = EmbView(
+            self,
+            target_sources=(FeatureSource.INTERACTION,),
+            exclude_fields=domain_fields,
+        )
+
+    def _init_embedding(self):
+        for setting in self.settings:
+            # A. 维护 Source 映射
+            self.source2settings.setdefault(setting.source, []).append(setting)
+
+            # B. 确定哪些特征需要物理权重 (nn.Embedding)
+            if setting.emb_type not in (EmbType.DENSE, EmbType.SEQ_GROUP, EmbType.SHARE_SEQ):
+                self.emb_modules[setting.field_name] = RecEmbedding(
+                    num_embeddings=setting.num_embeddings,
+                    embedding_dim=setting.embedding_dim,
+                    padding_idx={True: 0, False: None}[setting.padding_zero]
+                )
+
+            # C. 自动收集带有组名标签的序列特征
+            if hasattr(setting, 'group_name') and setting.group_name:
+                self.group2fields.setdefault(setting.group_name, []).append(setting.field_name)
+
+
     def forward(
             self,
             interaction,
             split_by: SPLIT_METHODS = "none",
-            target_sources: Union[FeatureSource, Iterable[FeatureSource]] = None
+            target_sources: Union[FeatureSource, Iterable[FeatureSource]] = None,
+            include_fields: Iterable[str] = None,
+            exclude_fields: Iterable[str] = None,
     ) -> Union[Dict[Union[str, FeatureSource], torch.Tensor], torch.Tensor, None]:
 
         split_by = split_by.lower() if isinstance(split_by, str) else None
         if split_by not in ("source", "name", "none", None):
             raise ValueError(f"Invalid split_by: {split_by}")
 
-        if target_sources is not None:
-            if not isinstance(target_sources, Iterable):
-                target_sources = {target_sources}
-            else:
-                target_sources = set(target_sources)
+        # 1. 路由过滤：找出本次 forward 需要处理的所有 Setting
+        valid_settings = self._filter_settings(target_sources, include_fields, exclude_fields, split_by)
+        computed = [(s, s.compute_tensor(interaction, self.emb_modules)) for s in valid_settings]
+        return self.format_output(computed, split_by)
 
-        output_embs = {}
 
+    def _filter_settings(self, target_sources, include_fields, exclude_fields, split_by) -> List[EmbSetting]:
+        """职责一：专门负责解析 target_sources 和 include/exclude_fields，返回合法的 Setting 列表"""
+        target_sources = set(target_sources) if target_sources else None
+        include_fields = set(include_fields) if include_fields else None
+        exclude_fields = set(exclude_fields) if exclude_fields else None
+        valid_settings = []
         for source, settings in self.source2settings.items():
-            # ✨ 核心：动态范围过滤
-            if target_sources is not None and source not in target_sources:
+            if target_sources and source not in target_sources:
                 continue
-
-            if not settings:
-                continue
-
-            emb_list = []
             for setting in settings:
-                idx_tensor = interaction[setting.field_name]
-
-                # 数值特征不查表，直接扩展维度
-                if setting.emb_type in (EmbType.DENSE,):
-                    emb = idx_tensor.unsqueeze(-1)
-                    emb_list.append([setting.field_name, emb])
+                if include_fields and setting.field_name not in include_fields:
+                    continue
+                if exclude_fields and setting.field_name in exclude_fields:
                     continue
 
-                emb = self.emb_modules[setting.field_name](idx_tensor)
+                is_sequence_type = setting.emb_type in (EmbType.SEQ_GROUP, EmbType.SHARE_SEQ, EmbType.SPARSE_SEQ)
+                if (split_by == "none" or split_by is None) and is_sequence_type:
+                    if not (include_fields and setting.field_name in include_fields):
+                        continue
 
-                # Set 特征的 Pooling
-                if isinstance(setting, SparseSetEmbSetting):
-                    emb = torch.sum(emb, dim=-2)
-                    if setting.agg == "mean":
-                        emb = emb / (idx_tensor > 0).sum(dim=-1, keepdim=True).clamp(min=1)
+                valid_settings.append(setting)
+        return valid_settings
 
-                emb_list.append([setting.field_name, emb])
+    def format_output(self, computed_results: List[tuple], split_by: str):
+        """职责三：根据 split_by 策略打包最终输出的 Tensor 或 Dict"""
+        if not computed_results:
+            return None
 
-            # 组装当前 Source 下的输出
-            if emb_list:
-                if split_by == "source":
-                    output_embs[source] = torch.cat([emb for name, emb in emb_list], dim=-1)
-                elif split_by == "name":
-                    for name, emb in emb_list:
-                        output_embs[name] = emb
-                else:
-                    output_embs.setdefault("all", []).extend([emb for name, emb in emb_list])
+        if split_by == "name":
+            return {setting.field_name: emb for setting, emb in computed_results}
 
-        # 最终输出逻辑
-        if split_by is None or split_by == "none":
-            if "all" not in output_embs or not output_embs["all"]:
-                return None
-            else:
-                return torch.cat(output_embs["all"], dim=-1)
-        else:
-            return output_embs
+        if split_by == "source":
+            output_dict = {}
+            for setting, emb in computed_results:
+                output_dict.setdefault(setting.source, []).append(emb)
+            return {source: torch.cat(embs, dim=-1) for source, embs in output_dict.items()}
 
-    def get_output_dim(self, target_sources: Union[FeatureSource, Iterable[FeatureSource]] = None) -> int:
+        all_embs = [emb for _, emb in computed_results]
+        return torch.cat(all_embs, dim=-1)
+
+    def get_output_dim(self,
+                       target_sources: Union[FeatureSource, Iterable[FeatureSource]] = None,
+                       include_fields: Iterable[str] = None,
+                       exclude_fields: Iterable[str] = None) -> int:
         """
         获取指定 target_sources 下拼接后 Embedding 的总维度大小。
         这是为了弥补移除 SideEmb 后，下游网络无法直接获取 self.embedding_size 的问题。
@@ -410,10 +526,20 @@ class OmniEmbLayer(nn.Module):
                 target_sources = {target_sources}
             else:
                 target_sources = set(target_sources)
+        if include_fields is not None:
+            include_fields = set(include_fields)
+        if exclude_fields is not None:
+            exclude_fields = set(exclude_fields)
 
         total_dim = 0
         for source, settings in self.source2settings.items():
             if target_sources is not None and source not in target_sources:
                 continue
-            total_dim += sum(s.embedding_dim for s in settings if hasattr(s, 'embedding_size'))
+            for setting in settings:
+                if include_fields is not None and setting.field_name not in include_fields:
+                    continue
+                if exclude_fields is not None and setting.field_name in exclude_fields:
+                    continue
+                if hasattr(setting, 'embedding_dim'):
+                    total_dim += setting.embedding_dim
         return total_dim

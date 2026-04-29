@@ -17,7 +17,7 @@ import pandas as pd
 import torch
 import torch.nn.utils.rnn as rnn_utils
 
-
+# 他只是对齐......
 def _convert_to_tensor(data):
     """
     增强版转换函数：完美兼容 uint32 并自动对齐 PyTorch 常用类型。

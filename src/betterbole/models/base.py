@@ -9,16 +9,15 @@ from betterbole.emb import SchemaManager
 from betterbole.emb.emblayer import OmniEmbLayer
 
 
-class BaseModel(ABC, nn.Module):
+class BaseModel(nn.Module):
     def __init__(self, manager: SchemaManager):
         super(BaseModel, self).__init__()
         self.manager: SchemaManager = manager
-        self.omni_embedding: OmniEmbLayer = OmniEmbLayer(manager.settings)
+        self.omni_embedding: OmniEmbLayer = OmniEmbLayer(manager=manager)
 
-    @abstractmethod
     def calculate_loss(self, interaction: Interaction):
         raise NotImplementedError
-    @abstractmethod
+
     def predict(self, interaction: Interaction):
         raise NotImplementedError
 

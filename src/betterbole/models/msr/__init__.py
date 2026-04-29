@@ -1,77 +1,66 @@
-from typing import Dict, Type
+from typing import Dict, Type, Union
 
-from betterbole.core.enum_type import FeatureSource
-from betterbole.core.interaction import Interaction
 from betterbole.emb import SchemaManager
-from betterbole.emb.emblayer import UserSideEmb, ItemSideEmb, InterSideEmb, OmniEmbLayer
-from betterbole.experiment.param import ConfigBase
-from betterbole.experiment.train.context import TrainContext
-from betterbole.experiment.train.trainer import CustomTrainStepProtocol
-from betterbole.models.base import BaseModel
-from betterbole.models.msr.backbone import (
-    MSRBackbone, PLEBackbone, STARBackbone, SharedBottomBackbone, M3oEBackbone, M3oEVersion1Backbone,
-    M3oEVersion2Backbone, MMoEBackbone, M2MBackbone, PPNetBackbone, EPNetBackbone
-)
+from betterbole.models.msr.automtl import AutoMTLModel
 from betterbole.models.msr.base import MSRModel
-from betterbole.models.utils.container import MultiScenarioContainer
-from betterbole.models.utils.general import ModuleFactory
-
-import torch
-from torch import nn
-
-class CustomMSRModel(MSRModel):
-    def __init__(self, manager: SchemaManager, num_domains: int, backbone: MSRBackbone):
-        super().__init__(manager, num_domains)
-        self.backbone = backbone
-        self.omni_embedding: OmniEmbLayer = self.omni_embedding
-        self.input_dim = self.omni_embedding.whole.embedding_dim
-        self.DOMAIN = self.manager.domain_field
-        self.backbone = backbone
-        self.head = MultiScenarioContainer(num_domains, ModuleFactory.build_tower(self.backbone.output_dim))
-        self.LABEL = self.manager.label_field
-
-    def concat_embed_input_fields(self, interaction):
-        return self.omni_embedding.whole(interaction)
-    def forward(self, x, domain_ids):
-        return self.head.forward(self.backbone.forward(x, domain_ids), domain_ids).squeeze(-1)
-    def predict(self, interaction):
-        x = self.concat_embed_input_fields(interaction)
-        domain_ids = interaction[self.DOMAIN]
-        x = torch.flatten(x, start_dim=1)
-        final_logits = self.forward(x, domain_ids)
-        return final_logits
-
-    def calculate_loss(self, interaction):
-        labels = interaction[self.LABEL].float()
-        domain_ids = interaction[self.DOMAIN]
-        x = self.concat_embed_input_fields(interaction)
-        x = torch.flatten(x, start_dim=1)
-        final_logits = self.forward(x, domain_ids)
-        loss = nn.functional.binary_cross_entropy_with_logits(final_logits, labels)
-        return loss
+from betterbole.models.msr.epnet import EPNetModel
+from betterbole.models.msr.hierrec import HierRec
+from betterbole.models.msr.m3oe import M3oEModel, M3oEVersion1Model, M3oEVersion2Model
+from betterbole.models.msr.m2m import M2MModel
+from betterbole.models.msr.mmoe import MMoEModel
+from betterbole.models.msr.ppnet import PPNetModel
+from betterbole.models.msr.ple import PLEModel
+from betterbole.models.msr.sharedbottom import SharedBottomModel
+from betterbole.models.msr.star import STARModel
 
 
-class M3oEModel(MSRModel, CustomTrainStepProtocol):
-    def __init__(self, schema_manager: SchemaManager, num_domains: int, backbone: MSRBackbone):
-        super().__init__(schema_manager, num_domains, backbone)
+MODEL_REGISTRY: Dict[str, Type[MSRModel]] = {
+    "sharedbottom": SharedBottomModel,
+    "mmoe": MMoEModel,
+    "ple": PLEModel,
+    "star": STARModel,
+    "m3oe": M3oEModel,
+    "m3oe_v1": M3oEVersion1Model,
+    "m3oe_v2": M3oEVersion2Model,
+    "m2m": M2MModel,
+    "ppnet": PPNetModel,
+    "epnet": EPNetModel,
+    "hierrec": HierRec,
+    "automtl": AutoMTLModel,
+}
 
-    def custom_train_step(self, batch_interaction, ctx: TrainContext):
-        loss = self.calculate_loss(batch_interaction)
-        if ctx.global_step % 30 == 0:
-            self.optimizer_arch.zero_grad()
 
-        self.optimizer_base.zero_grad()
+def build_model(
+        schema_manager: SchemaManager,
+        num_domains: int,
+        model_cls: Union[str, Type[MSRModel]],
+        **model_kwargs,
+):
 
-        loss.backward()
-        if ctx.global_step % 30 == 0:
-            self.optimizer_arch.step()
-        self.optimizer_base.step()
-
-def build_model(schema_manager: SchemaManager,
-                num_domains: int,
-                backbone_cls: Type[MSRBackbone],
-                backbone_kwargs: Dict, ):
-    if isinstance(backbone, M3oEBackbone):
-        return M3oEModel(schema_manager, num_domains, backbone_cls(**backbone_kwargs))
+    if isinstance(model_cls, str):
+        model_name = model_cls
+        model_cls = MODEL_REGISTRY.get(model_name.lower())
     else:
-        return CustomMSRModel(schema_manager, num_domains, backbone_cls(**backbone_kwargs))
+        model_name = model_cls.__name__
+    if model_cls is None:
+        raise ValueError(f"Unknown model_name={model_name}. Available: {sorted(MODEL_REGISTRY.keys())}")
+    return model_cls.from_manager(schema_manager, num_domains, **dict(model_kwargs or {}))
+
+
+__all__ = [
+    "MSRModel",
+    "HierRec",
+    "SharedBottomModel",
+    "MMoEModel",
+    "PLEModel",
+    "STARModel",
+    "M3oEModel",
+    "M3oEVersion1Model",
+    "M3oEVersion2Model",
+    "M2MModel",
+    "PPNetModel",
+    "EPNetModel",
+    "AutoMTLModel",
+    "MODEL_REGISTRY",
+    "build_model",
+]

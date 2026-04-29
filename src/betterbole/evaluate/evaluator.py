@@ -4,6 +4,8 @@ from typing import Iterable, Union, Literal
 import numpy as np
 from sklearn.metrics import roc_auc_score, log_loss
 import torch
+
+
 class BaseEvaluator:
     VALID_METRICS = ["auc", "logloss", "gauc", "hr", "ndcg", "recall"]
     def __init__(self, metrics):
@@ -111,8 +113,9 @@ class TopKEvaluator(BaseEvaluator):
         self.total_users = 0
 
 import polars as pl
+ValidMetrics = Literal["auc", "logloss", "gauc", "HR@*", "NDCG@*"]
 class Evaluator:
-    def __init__(self, *metrics: Literal["auc", "logloss", "gauc", "HR@*", "NDCG@*"], history_dict=None):
+    def __init__(self, *metrics: ValidMetrics, history_dict=None):
         """
         metrics: list of str, 例如 ['auc', 'logloss', 'hit@10', 'ndcg@20']
         history_dict: dict, TopK 评估必须传入的静态历史黑名单

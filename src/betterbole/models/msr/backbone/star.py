@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from betterbole.models.msr.backbone.base import MSRBackbone
-from betterbole.models.msr.backbone.common import to_dims
+from betterbole.models.msr.backbone.common import to_dims, default_dims
 from betterbole.models.utils.container import domain_select
 from betterbole.models.utils.tests import dummy_input_multi_domain
 
@@ -50,7 +50,7 @@ class STARBackbone(MSRBackbone):
             expert_dims=None,
             activation: str = "relu",
     ):
-        expert_dims = to_dims(expert_dims, (input_dim, input_dim))
+        expert_dims = to_dims(expert_dims, default_dims(input_dim))
         linear_stream = (input_dim, *expert_dims)
         super().__init__(input_dim=input_dim, num_domains=num_domains, output_dim=expert_dims[-1])
         self.activation = activation
@@ -58,6 +58,19 @@ class STARBackbone(MSRBackbone):
         self.domain_experts = nn.ModuleList([
             StarExpert(*linear_stream) for _ in range(num_domains)
         ])
+        self._reset_star_parameters()
+
+    def _reset_star_parameters(self):
+        for weight in self.shared_expert.weights:
+            nn.init.xavier_uniform_(weight)
+        for bias in self.shared_expert.biases:
+            nn.init.zeros_(bias)
+
+        for expert in self.domain_experts:
+            for weight in expert.weights:
+                nn.init.normal_(weight, mean=1.0, std=0.02)
+            for bias in expert.biases:
+                nn.init.zeros_(bias)
 
     def forward(self, x: torch.Tensor, domain_ids: torch.Tensor) -> torch.Tensor:
         merged = [self.shared_expert.merge_with(domain_expert) for domain_expert in self.domain_experts]
