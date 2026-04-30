@@ -8,6 +8,9 @@ import polars as pl
 
 from betterbole.core.enum_type import FeatureSource
 
+"""
+完全视为 Utf8 字符串的处理方案
+"""
 
 class EmbType(Enum):
     UNKNOWN = "none"
@@ -47,20 +50,26 @@ def clear_seq_expr(field_name, is_string_format, separator):
 
 def clear_seq_expr(field_name, is_string_format, separator):
     if is_string_format:
-        # 【字符串格式】如 "1, 2, , 4" 或 null
         expr = (
             pl.col(field_name)
-            .fill_null("")  # 1. 外部保底：整列 null 变空字符串 ""
-            .str.replace_all(" ", "")  # 2. 全局去空格，替代原先内层的 strip_chars()
-            .str.split(separator)  # 3. 切分，产生 List[Utf8]
-            .list.eval(pl.element().filter(pl.element() != ""))
+            .cast(pl.Utf8)                 # 🛡️ 提前强转，确保类型安全
+            .fill_null("NULL_FALLBACK")
+            .str.split(separator)
+            .list.eval(
+                pl.element()
+                .str.strip_chars()
+                .filter(pl.element() != "")
+            )
         )
     else:
         expr = (
             pl.col(field_name)
-            .fill_null([])  # 1. 外部保底：整列的 null 变成空列表 []
-            .list.drop_nulls()  # 2. 外部原生方法：瞬间抽干列表内部的 null，无需 eval！
-            .cast(pl.List(pl.Utf8))  # 3. 【核心】在外部将整个 List 强转为 List[Utf8]，替代 eval 内部的 cast
+            .cast(pl.List(pl.Utf8))        # 🛡️ 瞬间把 [1, null, 2] 转成 ["1", null, "2"]
+            .fill_null(["NULL_FALLBACK"])  # 现在塞入含有字符串的列表就绝对安全了
+            .list.eval(
+                pl.element()
+                .fill_null("NULL_FALLBACK")
+            )
         )
     return expr
 
@@ -162,7 +171,7 @@ class SparseEmbSetting(EmbSetting):
 
     def get_fit_exprs(self):
         return [
-            pl.col(self.field_name).cast(pl.Utf8).drop_nulls()
+            pl.col(self.field_name).cast(pl.Utf8).drop_nulls() # 统计词频要drop null
             .value_counts()
             .implode()
             .alias(self.field_name)
@@ -189,8 +198,8 @@ class SparseEmbSetting(EmbSetting):
         )
         return (
             pl.col(self.field_name)
-            .fill_null("NULL_FALLBACK")
             .cast(pl.Utf8)
+            .fill_null("NULL_FALLBACK")
             .replace_strict(self.vocab, **replace_kwargs)
             .cast(pl.UInt32)
             .alias(self.field_name)
@@ -268,7 +277,7 @@ class SparseSetEmbSetting(EmbSetting):
                     old=keys,
                     new=vals,
                     default=pl.lit(self.oov_idx, dtype=pl.UInt32)
-                )
+                ).cast(pl.UInt32)
             )
             .alias(self.field_name)
         )
@@ -312,8 +321,12 @@ class SparseSetEmbSetting(EmbSetting):
         # 2. (Pooling)
         emb = torch.sum(emb, dim=-2)
         if self.agg == "mean":
-            mask_sum = (idx_tensor > 0).sum(dim=-1, keepdim=True).clamp(min=1)
+            if self.padding_zero:
+                mask_sum = (idx_tensor != 0).sum(dim=-1, keepdim=True).clamp(min=1)
+            else:
+                mask_sum = torch.tensor(idx_tensor.shape[-1], dtype=torch.float32, device=idx_tensor.device)
             emb = emb / mask_sum
+
         return emb
 
 
@@ -681,15 +694,18 @@ class SeqGroupConfig:
 class SharedVocabSeqSetting(EmbSetting):
     emb_type = EmbType.SHARE_SEQ
 
-    def __init__(self, field_name: str, target_setting: EmbSetting, group: SeqGroupConfig):
+    def __init__(self, field_name: str, target_setting: EmbSetting, group: SeqGroupConfig,
+                 is_string_format: bool = False, separator: str = ","):  # 🛡️ 必须显式传进来！
         super().__init__(field_name, embedding_dim=target_setting.embedding_dim, source=FeatureSource.SEQ)
         self.target_setting = target_setting
 
-        # 核心：不再自己维护这些变量，而是直接从契约中继承
         self.group_name = group.group_name
         self.seq_len_field_name = group.seq_len_field_name
         self.padding_side = group.padding_side
         self.max_len = group.max_len
+
+        self.is_string_format = is_string_format
+        self.separator = separator
 
     def compute_tensor(self, interaction: dict, emb_modules: nn.ModuleDict) -> torch.Tensor:
         mock_interaction = {self.target_setting.field_name: interaction[self.field_name]}
@@ -717,9 +733,7 @@ class SharedVocabSeqSetting(EmbSetting):
         oov_fallback = pl.lit(self.target_setting.oov_idx, dtype=pl.UInt32)
 
         # 2. 清洗基础列，防空指针
-        expr = pl.col(self.field_name).fill_null([])
-        if getattr(self, "is_string_format", False):
-            expr = expr.list.eval(pl.element().str.split(getattr(self, "separator", ",")))
+        expr = clear_seq_expr(self.field_name, self.is_string_format, self.separator)
 
         if isinstance(self.target_setting, SparseSetEmbSetting):
             # 【3D 降维打击】处理 List[List[str]] (例如: history_genres)
@@ -785,26 +799,42 @@ class SparseSeqEmbSetting(EmbSetting):
         self._build_vocab_indices(valid_vals)
 
     def get_transform_expr(self) -> List[pl.Expr]:
+        # 1. 正常的映射逻辑（包含了 NULL_FALLBACK，会变成长度为 1 的 OOV 序列，用于兜底 Embedding）
         expr = clear_seq_expr(self.field_name, self.is_string_format, self.separator)
         keys = pl.Series(list(self.vocab.keys()), dtype=pl.Utf8)
         vals = pl.Series(list(self.vocab.values()), dtype=pl.UInt32)
 
-        # 只查表和截断，绝对不补齐，保持变长 List 落盘，极致节省硬盘空间！
         mapped_expr = (
             expr.list.eval(
                 pl.element()
-                .fill_null("NULL_FALLBACK")
-                .cast(pl.Utf8)
                 .replace_strict(old=keys, new=vals, default=pl.lit(self.oov_idx, dtype=pl.UInt32))
                 .cast(pl.UInt32)
             )
             .list.tail(self.max_len)
+            .alias(self.field_name)
         )
 
-        # 顺手计算真实长度
-        len_expr = mapped_expr.list.len().cast(pl.UInt32).alias(self.seq_len_field_name)
+        if self.is_string_format:
+            len_expr = (
+                pl.col(self.field_name)
+                .fill_null("")
+                .str.split(self.separator)
+                .list.eval(pl.element().str.strip_chars().filter(pl.element() != ""))
+                .list.len()
+                .cast(pl.UInt32)
+                .alias(self.seq_len_field_name)
+            )
+        else:
+            len_expr = (
+                pl.col(self.field_name)
+                .fill_null([])
+                .list.drop_nulls()
+                .list.len()
+                .cast(pl.UInt32)
+                .alias(self.seq_len_field_name)
+            )
 
-        return [mapped_expr.alias(self.field_name), len_expr]
+        return [mapped_expr, len_expr]
 
     def to_dict(self):
         d = super().to_dict()

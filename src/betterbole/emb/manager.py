@@ -10,8 +10,8 @@ import pyarrow.parquet as pq
 import polars as pl
 
 from betterbole.data.split import SPLIT_STRATEGIES, SplitContext
-from betterbole.emb.schema import IdSeqEmbSetting, SparseEmbSetting, SparseSetEmbSetting, EmbSetting, EmbType, \
-    SeqGroupEmbSetting, SharedVocabSeqSetting, SparseSeqEmbSetting
+from betterbole.emb.schema import BaseSequenceSetting, SparseEmbSetting, SparseSetEmbSetting, EmbSetting, EmbType, \
+    SeqGroupEmbSetting
 from betterbole.core.enum_type import FeatureSource
 from typing import Any, List, Iterable
 
@@ -108,14 +108,7 @@ class SchemaManager:
         else:
             print("[+] 所有特征已就绪，跳过 Fit 扫描。")
         print("[*] 阶段二：构建 Transform 计算图...")
-        transform_exprs = []
-        for setting in self.settings:
-            if setting.emb_type != EmbType.UNKNOWN:
-                expr = setting.get_transform_expr()
-                if isinstance(expr, list):
-                    transform_exprs.extend(expr)  # 如果是列表，展平加入
-                else:
-                    transform_exprs.append(expr)
+        transform_exprs = self._build_transform_exprs()
         print(f"[*] 启动流式转换计算，引擎正在将数据写入 {output_parquet} ...")
         lazy_df.with_columns(transform_exprs) \
             .sink_parquet(output_parquet)
@@ -181,15 +174,28 @@ class SchemaManager:
         """
         阶段二：根据已固化的 Schema 进行流式转换
         """
-        transform_exprs = []
-        for s in self.settings:
-            if s.emb_type != EmbType.UNKNOWN:
-                expr = s.get_transform_expr()
-                if isinstance(expr, list):
-                    transform_exprs.extend(expr)
-                else:
-                    transform_exprs.append(expr)
+        transform_exprs = self._build_transform_exprs()
         return raw_lf.with_columns(transform_exprs)
+
+    def _build_transform_exprs(self) -> List[pl.Expr]:
+        transform_exprs: List[pl.Expr] = []
+        seen_output_names = set()
+        for setting in self.settings:
+            if setting.emb_type == EmbType.UNKNOWN:
+                continue
+            expr = setting.get_transform_expr()
+            expr_list = expr if isinstance(expr, list) else [expr]
+            for item in expr_list:
+                try:
+                    output_name = item.meta.output_name()
+                except Exception:
+                    output_name = None
+                if output_name is not None and output_name in seen_output_names:
+                    continue
+                if output_name is not None:
+                    seen_output_names.add(output_name)
+                transform_exprs.append(item)
+        return transform_exprs
 
     def _make_checkpoint(self, lazy_df, file_name="temp_checkpoint.parquet"):
         temp_checkpoint_path = self.work_dir / file_name
@@ -300,10 +306,11 @@ class SchemaManager:
         for setting in self.settings:
             if setting.field_name in meta_dict:
                 saved_state = meta_dict[setting.field_name]
-                if saved_state.get("type") != setting.emb_type.name:
+                saved_type = saved_state.get("type")
+                if saved_type not in setting.compatible_type_names:
                     raise ValueError(
                         f"特征 {setting.field_name} 的类型不匹配: "
-                        f"期望 {setting.emb_type.name}, JSON 中为 {saved_state.get('type')}"
+                        f"期望 {sorted(setting.compatible_type_names)}, JSON 中为 {saved_type}"
                     )
 
                 setting.load_state(saved_state)
@@ -328,13 +335,12 @@ class SchemaManager:
         fields = []
         for setting in self.settings:
             if isinstance(setting, SeqGroupEmbSetting):
-                fields.extend([seq_field for seq_field in setting.target_dict.keys()])
-                fields.append(setting.seq_len_field_name)
-                continue
-            fields.append(setting.field_name)
-            if isinstance(setting, (IdSeqEmbSetting, SharedVocabSeqSetting, SparseSeqEmbSetting)):
-                fields.append(setting.seq_len_field_name)
+                fields.extend(setting.target_dict.keys())
+            else:
+                fields.append(setting.field_name)
 
+            if isinstance(setting, BaseSequenceSetting) and not isinstance(setting, SparseSetEmbSetting):
+                fields.append(setting.seq_len_field_name)
 
         for ctx_field in (self.time_field, *self.label_fields, *self.domain_fields):
             if ctx_field is not None and ctx_field not in fields:

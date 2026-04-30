@@ -3,7 +3,13 @@ from typing import Iterable, List, Dict, Union, Literal, TYPE_CHECKING
 import numpy as np
 import pandas as pd
 import torch
-from betterbole.emb.schema import EmbType, EmbSetting, IdSeqEmbSetting, SparseSetEmbSetting, SeqGroupEmbSetting
+from betterbole.emb.schema import (
+    BaseSequenceSetting,
+    EmbSetting,
+    EmbType,
+    IdSeqEmbSetting,
+    SparseSetEmbSetting,
+)
 from betterbole.core.enum_type import FeatureSource
 from torch import nn
 
@@ -58,14 +64,12 @@ class BoleEmbLayer(nn.Module):
                 self.source2settings[setting.source] = []
             self.source2settings[setting.source].append(setting)
 
-            if setting.emb_type in (EmbType.DENSE,):
-                continue
-            # 所有的特征 (不管是数值分箱还是离散ID)，现在都可以统一用 RecEmbedding
-            self.emb_modules[setting.field_name] = RecEmbedding(
-                num_embeddings=setting.num_embeddings,
-                embedding_dim=setting.embedding_dim,
-                padding_idx={True: 0, False: None}[setting.padding_zero]
-            )
+            if setting.requires_embedding_module:
+                self.emb_modules[setting.field_name] = RecEmbedding(
+                    num_embeddings=setting.num_embeddings,
+                    embedding_dim=setting.embedding_dim,
+                    padding_idx={True: 0, False: None}[setting.padding_zero]
+                )
 
     def forward(self, interaction, split_by: SPLIT_METHODS="none") -> Union[Dict[Union[str, FeatureSource], torch.Tensor], torch.Tensor]:
         split_by = split_by.lower() if isinstance(split_by, str) else None
@@ -78,20 +82,7 @@ class BoleEmbLayer(nn.Module):
                 continue
             emb_list = []
             for setting in settings:
-                idx_tensor = interaction[setting.field_name]
-                # 数字不需要emb
-                if setting.emb_type in (EmbType.DENSE,):
-                    emb = idx_tensor.unsqueeze(-1)
-                    emb_list.append([setting.field_name, emb])
-                    continue
-
-                emb = self.emb_modules[setting.field_name](idx_tensor)
-                # Set特征的 Pooling
-                if isinstance(setting, SparseSetEmbSetting):
-                    emb = torch.sum(emb, dim=-2) 
-                    if setting.agg == "mean":
-                        emb = emb / (idx_tensor > 0).sum(dim=-1, keepdim=True).clamp(min=1)
-
+                emb = setting.compute_tensor(interaction, self.emb_modules)
                 emb_list.append([setting.field_name, emb])
 
             if emb_list:
@@ -442,7 +433,7 @@ class OmniEmbLayer(nn.Module):
             self.source2settings.setdefault(setting.source, []).append(setting)
 
             # B. 确定哪些特征需要物理权重 (nn.Embedding)
-            if setting.emb_type not in (EmbType.DENSE, EmbType.SEQ_GROUP, EmbType.SHARE_SEQ):
+            if setting.requires_embedding_module:
                 self.emb_modules[setting.field_name] = RecEmbedding(
                     num_embeddings=setting.num_embeddings,
                     embedding_dim=setting.embedding_dim,
@@ -488,7 +479,7 @@ class OmniEmbLayer(nn.Module):
                 if exclude_fields and setting.field_name in exclude_fields:
                     continue
 
-                is_sequence_type = setting.emb_type in (EmbType.SEQ_GROUP, EmbType.SHARE_SEQ, EmbType.SPARSE_SEQ)
+                is_sequence_type = isinstance(setting, BaseSequenceSetting) and not isinstance(setting, SparseSetEmbSetting)
                 if (split_by == "none" or split_by is None) and is_sequence_type:
                     if not (include_fields and setting.field_name in include_fields):
                         continue
@@ -521,25 +512,10 @@ class OmniEmbLayer(nn.Module):
         获取指定 target_sources 下拼接后 Embedding 的总维度大小。
         这是为了弥补移除 SideEmb 后，下游网络无法直接获取 self.embedding_size 的问题。
         """
-        if target_sources is not None:
-            if not isinstance(target_sources, Iterable):
-                target_sources = {target_sources}
-            else:
-                target_sources = set(target_sources)
-        if include_fields is not None:
-            include_fields = set(include_fields)
-        if exclude_fields is not None:
-            exclude_fields = set(exclude_fields)
-
-        total_dim = 0
-        for source, settings in self.source2settings.items():
-            if target_sources is not None and source not in target_sources:
-                continue
-            for setting in settings:
-                if include_fields is not None and setting.field_name not in include_fields:
-                    continue
-                if exclude_fields is not None and setting.field_name in exclude_fields:
-                    continue
-                if hasattr(setting, 'embedding_dim'):
-                    total_dim += setting.embedding_dim
-        return total_dim
+        valid_settings = self._filter_settings(
+            target_sources=target_sources,
+            include_fields=include_fields,
+            exclude_fields=exclude_fields,
+            split_by="none",
+        )
+        return sum(setting.embedding_dim for setting in valid_settings)
