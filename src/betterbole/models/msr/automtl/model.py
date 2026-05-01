@@ -66,7 +66,7 @@ class AutoMTLModel(MSRModel):
         for setting in manager.settings:
             if setting.field_name in excluded_fields:
                 continue
-            if setting.emb_type == EmbType.SPARSE_SEQ:
+            if setting.is_sequence_setting:
                 raise ValueError(
                     f"AutoMTLModel does not support sequence field '{setting.field_name}' yet."
                 )

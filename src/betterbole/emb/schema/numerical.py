@@ -34,6 +34,11 @@ class BaseNumericalSetting(EmbSetting):
     def requires_embedding_module(self) -> bool:
         return False
 
+    def get_formatters(self):
+        from betterbole.data.padding import DenseFormatter
+
+        return {self.field_name: DenseFormatter()}
+
 
 class MinMaxDenseSetting(BaseNumericalSetting):
     emb_type = EmbType.DENSE
@@ -51,8 +56,11 @@ class MinMaxDenseSetting(BaseNumericalSetting):
         ]
 
     def parse_fit_result(self, result_df: pl.DataFrame):
-        self.min_val = result_df.get_column(f"{self.field_name}_min").to_list()[0]
-        self.max_val = result_df.get_column(f"{self.field_name}_max").to_list()[0]
+        self.parse_element_fit_result(result_df, alias=self.field_name)
+
+    def parse_element_fit_result(self, result_df: pl.DataFrame, alias: str):
+        self.min_val = result_df.get_column(f"{alias}_min").to_list()[0]
+        self.max_val = result_df.get_column(f"{alias}_max").to_list()[0]
         if self.min_val is None or self.max_val is None:
             self.min_val = 0.0
             self.max_val = 1.0
@@ -60,14 +68,20 @@ class MinMaxDenseSetting(BaseNumericalSetting):
             self.max_val = self.min_val + 1e-6
         self.is_fitted = True
 
-    def get_transform_expr(self) -> pl.Expr:
+    def get_element_fit_exprs(self, seq_expr: pl.Expr, alias: str) -> List[pl.Expr]:
+        exploded = seq_expr.explode().cast(pl.Float64)
+        return [
+            exploded.min().alias(f"{alias}_min"),
+            exploded.max().alias(f"{alias}_max"),
+        ]
+
+    def get_element_transform_expr(self, expr: pl.Expr = None) -> pl.Expr:
+        expr = expr if expr is not None else pl.element()
         range_val = self.max_val - self.min_val
-        return (
-            ((pl.col(self.field_name) - self.min_val) / range_val)
-            .fill_null(0.0)
-            .cast(pl.Float32)
-            .alias(self.field_name)
-        )
+        return ((expr.cast(pl.Float32, strict=False) - self.min_val) / range_val).fill_null(0.0).cast(pl.Float32)
+
+    def get_transform_expr(self) -> pl.Expr:
+        return self.get_element_transform_expr(pl.col(self.field_name)).alias(self.field_name)
 
     def to_dict(self) -> Dict[str, Any]:
         data = super().to_dict()
@@ -173,6 +187,16 @@ class VectorDenseSetting(BaseNumericalSetting):
         # handled in the dataset formatter so checkpoints preserve the original
         # vector information instead of silently zeroing mismatched rows.
         return pl.col(self.field_name).cast(pl.List(pl.Float32)).alias(self.field_name)
+
+    def get_formatters(self):
+        from betterbole.data.padding import VectorDenseFormatter
+
+        return {
+            self.field_name: VectorDenseFormatter(
+                dim=int(self.embedding_dim),
+                zero_fill=self.zero_fill,
+            )
+        }
 
     def to_dict(self) -> Dict[str, Any]:
         data = super().to_dict()

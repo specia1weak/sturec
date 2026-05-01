@@ -10,8 +10,7 @@ import pyarrow.parquet as pq
 import polars as pl
 
 from betterbole.data.split import SplitConfig, SplitContext, create_split_strategy
-from betterbole.emb.schema import BaseSequenceSetting, SparseEmbSetting, SparseSetEmbSetting, EmbSetting, EmbType, \
-    SeqGroupEmbSetting
+from betterbole.emb.schema import EmbSetting, EmbType, MultiSparseSetting, SparseEmbSetting
 from betterbole.core.enum_type import FeatureSource
 from typing import Any, List, Iterable
 
@@ -334,16 +333,9 @@ class SchemaManager:
     def fields(self):
         fields = []
         for setting in self.settings:
-            if isinstance(setting, SeqGroupEmbSetting):
-                fields.extend(setting.target_dict.keys())
-            else:
-                fields.append(setting.field_name)
-
-            if isinstance(setting, BaseSequenceSetting) and not isinstance(setting, SparseSetEmbSetting):
-                fields.append(setting.seq_len_field_name)
-                time_field_name = getattr(setting, "time_field_name", None)
-                if time_field_name is not None and time_field_name not in fields:
-                    fields.append(time_field_name)
+            for field_name in setting.get_output_field_names():
+                if field_name not in fields:
+                    fields.append(field_name)
 
         for ctx_field in (self.time_field, *self.label_fields, *self.domain_fields):
             if ctx_field is not None and ctx_field not in fields:
@@ -359,7 +351,7 @@ if __name__ == "__main__":
     user_id_setting = SparseEmbSetting("user_id", FeatureSource.USER)
 
     # 高级序列特征映射：无论原数据是 "1,5,6" 还是 ["1", "5", "6"]，瞬间处理完毕
-    tags = SparseSetEmbSetting(
+    tags = MultiSparseSetting(
         field_name="tag",
         source=FeatureSource.ITEM,
         is_string_format=True,

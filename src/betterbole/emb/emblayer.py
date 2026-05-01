@@ -4,11 +4,9 @@ import numpy as np
 import pandas as pd
 import torch
 from betterbole.emb.schema import (
-    BaseSequenceSetting,
     EmbSetting,
-    EmbType,
-    IdSeqEmbSetting,
-    SparseSetEmbSetting,
+    MultiSparseSetting,
+    SequenceSetting,
 )
 from betterbole.core.enum_type import FeatureSource
 from torch import nn
@@ -64,8 +62,8 @@ class BoleEmbLayer(nn.Module):
                 self.source2settings[setting.source] = []
             self.source2settings[setting.source].append(setting)
 
-            if setting.requires_embedding_module:
-                self.emb_modules[setting.field_name] = RecEmbedding(
+            if setting.requires_embedding_module and setting.embedding_field_name not in self.emb_modules:
+                self.emb_modules[setting.embedding_field_name] = RecEmbedding(
                     num_embeddings=setting.num_embeddings,
                     embedding_dim=setting.embedding_dim,
                     padding_idx={True: 0, False: None}[setting.padding_zero]
@@ -189,8 +187,8 @@ class ProfileEncoder(nn.Module):
             field = setting.field_name
 
             # --- 分支 A：处理变长序列特征 (必须 Padding) ---
-            if setting.emb_type in (EmbType.SPARSE_SET, ):
-                max_len = getattr(setting, 'max_len', 50)  # 从 setting 获取最大长度
+            if isinstance(setting, MultiSparseSetting):
+                max_len = getattr(setting, 'max_tag_len', 50)
                 padded_matrix = self._pad_sequences(df[field], max_len)
 
                 # 初始化空矩阵 [num_entities, max_len]
@@ -263,9 +261,9 @@ class SeqEmbedder(nn.Module):
         if len(filtered_list) != 1:
             raise ValueError
         self.id_setting = filtered_list[0]
-        if not isinstance(self.id_setting, IdSeqEmbSetting):
+        if not isinstance(self.id_setting, SequenceSetting):
             raise ValueError
-        self.id_setting: IdSeqEmbSetting = self.id_setting
+        self.id_setting: SequenceSetting = self.id_setting
         self.seq_field_name = seq_field_name
         self.seq_len_field_name = self.id_setting.seq_len_field_name
 
@@ -334,7 +332,7 @@ class SeqGroupView(EmbView):
         super().__init__(omni_layer, include_fields=include_fields)
         self.group_name = group_name
 
-        # 预加载对齐的 target 设置与 seq_len 字段
+        # 预加载对齐的 element 设置与 seq_len 字段
         self.target_settings = []
         self.seq_len_field = None
         self.time_field = None
@@ -345,8 +343,8 @@ class SeqGroupView(EmbView):
             if setting is None:
                 continue
 
-            if hasattr(setting, 'target_setting'):
-                self.target_settings.append(setting.target_setting)
+            if hasattr(setting, 'element_setting'):
+                self.target_settings.append(setting.element_setting)
             else:
                 self._target_forward_valid = False
 
@@ -365,7 +363,7 @@ class SeqGroupView(EmbView):
                     )
 
     def forward_target(self, interaction, split_by: str = "none"):
-        # 实际上所有setting必须拥有target_setting forward_target才不会有歧义
+        # 实际上所有 setting 都应暴露 element_setting，forward_target 才不会有歧义
         if split_by == "source":
             raise ValueError("Target sequence view strictly supports split_by='none' or 'name'.")
 
@@ -381,7 +379,7 @@ class SeqGroupView(EmbView):
         tar_emb = (
             self.forward_target(interaction, split_by="none")
             if self._target_forward_valid
-            else ValueError("存在部分setting没有target_setting，函数中断")
+            else ValueError("存在部分 setting 没有 element_setting，函数中断")
         )
         seq_len = interaction[self.seq_len_field] if self.seq_len_field else None
         time = interaction[self.time_field] if self.time_field else None
@@ -451,8 +449,8 @@ class OmniEmbLayer(nn.Module):
             self.source2settings.setdefault(setting.source, []).append(setting)
 
             # B. 确定哪些特征需要物理权重 (nn.Embedding)
-            if setting.requires_embedding_module:
-                self.emb_modules[setting.field_name] = RecEmbedding(
+            if setting.requires_embedding_module and setting.embedding_field_name not in self.emb_modules:
+                self.emb_modules[setting.embedding_field_name] = RecEmbedding(
                     num_embeddings=setting.num_embeddings,
                     embedding_dim=setting.embedding_dim,
                     padding_idx={True: 0, False: None}[setting.padding_zero]
@@ -497,8 +495,7 @@ class OmniEmbLayer(nn.Module):
                 if exclude_fields and setting.field_name in exclude_fields:
                     continue
 
-                is_sequence_type = isinstance(setting, BaseSequenceSetting) and not isinstance(setting, SparseSetEmbSetting)
-                if (split_by == "none" or split_by is None) and is_sequence_type:
+                if (split_by == "none" or split_by is None) and setting.is_sequence_setting:
                     if not (include_fields and setting.field_name in include_fields):
                         continue
 

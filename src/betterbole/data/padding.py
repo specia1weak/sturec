@@ -2,24 +2,12 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from functools import singledispatch
 from typing import TYPE_CHECKING, Dict, Iterable, Literal, Optional
 
 import numpy as np
 import torch
 
 from betterbole.core.interaction import Interaction
-from betterbole.emb.schema import (
-    BaseSequenceSetting,
-    EmbSetting,
-    EmbType,
-    IdSeqEmbSetting,
-    SeqDenseSetting,
-    SeqGroupEmbSetting,
-    SharedVocabSeqSetting,
-    SparseSetEmbSetting,
-    VectorDenseSetting,
-)
 
 if TYPE_CHECKING:
     from betterbole.emb import SchemaManager
@@ -194,96 +182,6 @@ class PaddedNestedSequenceFormatter(ColumnFormatter):
 DEFAULT_FALLBACK_FORMATTER = FallbackFormatter()
 
 
-def _resolve_target_setting(setting: BaseSequenceSetting):
-    if isinstance(setting, SharedVocabSeqSetting):
-        return setting.target_setting
-    if isinstance(setting, IdSeqEmbSetting):
-        return setting.target_item_setting
-    return None
-
-
-def _build_sequence_formatter(
-    max_len: int,
-    padding_side: PaddingSide = "right",
-    target_setting=None,
-) -> ColumnFormatter:
-    if isinstance(target_setting, SparseSetEmbSetting):
-        return PaddedNestedSequenceFormatter(
-            max_seq_len=max_len,
-            max_tag_len=target_setting.max_len,
-            padding_side=padding_side,
-        )
-    return PaddedIntSequenceFormatter(max_len=max_len, padding_side=padding_side)
-
-
-@singledispatch
-def build_formatters_from_setting(setting: EmbSetting) -> Dict[str, ColumnFormatter]:
-    if isinstance(setting, VectorDenseSetting) or setting.emb_type == EmbType.VECTOR_DENSE:
-        return {
-            setting.field_name: VectorDenseFormatter(
-                dim=int(setting.embedding_dim),
-                zero_fill=getattr(setting, "zero_fill", True),
-            )
-        }
-    if setting.emb_type == EmbType.DENSE:
-        return {setting.field_name: DenseFormatter()}
-    return {setting.field_name: IntFormatter()}
-
-
-@build_formatters_from_setting.register
-def _(setting: SeqGroupEmbSetting) -> Dict[str, ColumnFormatter]:
-    formatters = {
-        seq_col: _build_sequence_formatter(
-            max_len=setting.max_len,
-            padding_side=getattr(setting, "padding_side", "right"),
-            target_setting=target_setting,
-        )
-        for seq_col, target_setting in setting.target_dict.items()
-    }
-    formatters[setting.seq_len_field_name] = IntFormatter()
-    return formatters
-
-
-@build_formatters_from_setting.register
-def _(setting: SeqDenseSetting) -> Dict[str, ColumnFormatter]:
-    return {
-        setting.field_name: PaddedFloatSequenceFormatter(
-            max_len=setting.max_len,
-            padding_side=getattr(setting, "padding_side", "right"),
-        ),
-        setting.seq_len_field_name: IntFormatter(),
-    }
-
-
-@build_formatters_from_setting.register
-def _(setting: SparseSetEmbSetting) -> Dict[str, ColumnFormatter]:
-    return {
-        setting.field_name: PaddedIntSequenceFormatter(
-            max_len=setting.max_len,
-            padding_side=getattr(setting, "padding_side", "right"),
-        )
-    }
-
-
-@build_formatters_from_setting.register
-def _(setting: BaseSequenceSetting) -> Dict[str, ColumnFormatter]:
-    formatters = {
-        setting.field_name: _build_sequence_formatter(
-            max_len=setting.max_len,
-            padding_side=getattr(setting, "padding_side", "right"),
-            target_setting=_resolve_target_setting(setting),
-        ),
-        setting.seq_len_field_name: IntFormatter(),
-    }
-    time_field_name = getattr(setting, "time_field_name", None)
-    if time_field_name:
-        formatters[time_field_name] = PaddedIntSequenceFormatter(
-            max_len=setting.max_len,
-            padding_side=getattr(setting, "padding_side", "right"),
-        )
-    return formatters
-
-
 def _dedupe_names(names: Iterable[str]) -> list[str]:
     return list(dict.fromkeys(name for name in names if name))
 
@@ -295,13 +193,7 @@ def _resolve_raw_read_col_names(
 ) -> list[str]:
     raw_col_names: list[str] = []
     for setting in manager.settings:
-        if isinstance(setting, SeqGroupEmbSetting):
-            raw_col_names.extend(setting.target_dict.keys())
-        else:
-            raw_col_names.append(setting.field_name)
-        time_field_name = getattr(setting, "time_field_name", None)
-        if time_field_name:
-            raw_col_names.append(time_field_name)
+        raw_col_names.extend(setting.get_raw_field_names())
 
     raw_col_names.extend(manager.label_fields)
     raw_col_names.extend(manager.domain_fields)
@@ -368,7 +260,7 @@ class TensorFormatter:
     def _compile_formatters(self) -> Dict[str, ColumnFormatter]:
         formatters: Dict[str, ColumnFormatter] = {}
         for setting in self.context.manager.settings:
-            formatters.update(build_formatters_from_setting(setting))
+            formatters.update(setting.get_formatters())
 
         for ctx_col in (
             *self.context.manager.label_fields,

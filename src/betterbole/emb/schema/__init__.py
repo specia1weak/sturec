@@ -1,15 +1,7 @@
 from .base import EmbSetting, EmbType, SeqGroupConfig
-from .categorical import BaseCategoricalSetting, QuantileEmbSetting, SparseEmbSetting
+from .categorical import BaseCategoricalSetting, MultiSparseSetting, QuantileEmbSetting, SparseEmbSetting
 from .numerical import BaseNumericalSetting, MinMaxDenseSetting, VectorDenseSetting
-from .sequence import (
-    BaseSequenceSetting,
-    IdSeqEmbSetting,
-    SeqDenseSetting,
-    SeqGroupEmbSetting,
-    SharedVocabSeqSetting,
-    SparseSeqEmbSetting,
-    SparseSetEmbSetting,
-)
+from .sequence import SequenceSetting
 from .utils import NULL_FALLBACK, clear_seq_expr, explode_expr, seq_length_expr
 
 __all__ = [
@@ -19,17 +11,12 @@ __all__ = [
     "SeqGroupConfig",
     "BaseCategoricalSetting",
     "BaseNumericalSetting",
-    "BaseSequenceSetting",
     "SparseEmbSetting",
-    "SparseSetEmbSetting",
-    "SparseSeqEmbSetting",
-    "SharedVocabSeqSetting",
-    "IdSeqEmbSetting",
-    "SeqGroupEmbSetting",
+    "MultiSparseSetting",
+    "SequenceSetting",
     "QuantileEmbSetting",
     "MinMaxDenseSetting",
     "VectorDenseSetting",
-    "SeqDenseSetting",
     "clear_seq_expr",
     "explode_expr",
     "seq_length_expr",
