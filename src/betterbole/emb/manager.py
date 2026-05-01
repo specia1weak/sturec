@@ -5,11 +5,11 @@ import gc
 import json
 import os
 from pathlib import Path
-from typing import Union, Literal
+from typing import Union, Literal, Optional
 import pyarrow.parquet as pq
 import polars as pl
 
-from betterbole.data.split import SPLIT_STRATEGIES, SplitContext
+from betterbole.data.split import SplitConfig, SplitContext, create_split_strategy
 from betterbole.emb.schema import BaseSequenceSetting, SparseEmbSetting, SparseSetEmbSetting, EmbSetting, EmbType, \
     SeqGroupEmbSetting
 from betterbole.core.enum_type import FeatureSource
@@ -251,24 +251,24 @@ class SchemaManager:
             )
         print("[+] 静态查找表提取完成！")
 
-    def split_dataset(self, lf: pl.LazyFrame, strategy: Literal['loo', 'time', 'sequential_ratio', 'random_ratio'] = "random_ratio",
-                      output_dir: str = None, redo: bool = False, **kwargs):
+    def split_dataset(
+        self,
+        lf: pl.LazyFrame,
+        strategy: Literal['loo', 'time', 'sequential_ratio', 'random_ratio'] = "random_ratio",
+        output_dir: str = None,
+        redo: bool = False,
+        config: Optional[SplitConfig] = None,
+        **kwargs,
+    ):
         output_dir = self._parse_output_dir(output_dir)
-        StrategyClass = SPLIT_STRATEGIES.get(strategy)
-        if not StrategyClass:
-            raise ValueError(f"未知的切分策略: {strategy}")
         split_ctx = SplitContext(
             uid_field=self.uid_field,
             iid_field=self.iid_field,
             time_field=self.time_field,
             checkpoint_fn=self._make_checkpoint  # 把方法当做变量传递进去 (Callback)
         )
-        # 策略实例化与执行
-        splitter = StrategyClass(context=split_ctx)
-        kwargs.update({
-            "time_field": self.time_field or kwargs.get("time_field")
-        })
-        return splitter.split(lf, output_dir, redo, **kwargs)
+        splitter = create_split_strategy(strategy=strategy, context=split_ctx, config=config, **kwargs)
+        return splitter.split(lf, output_dir, redo)
 
     def save_as_dataset(self, train_lf, valid_lf=None, test_lf=None, output_dir: str = None, redo: bool = False):
         """
@@ -341,6 +341,9 @@ class SchemaManager:
 
             if isinstance(setting, BaseSequenceSetting) and not isinstance(setting, SparseSetEmbSetting):
                 fields.append(setting.seq_len_field_name)
+                time_field_name = getattr(setting, "time_field_name", None)
+                if time_field_name is not None and time_field_name not in fields:
+                    fields.append(time_field_name)
 
         for ctx_field in (self.time_field, *self.label_fields, *self.domain_fields):
             if ctx_field is not None and ctx_field not in fields:

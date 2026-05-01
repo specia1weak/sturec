@@ -25,6 +25,7 @@ from betterbole.emb.schema import (
     QuantileEmbSetting,
     SparseEmbSetting,
     SparseSetEmbSetting,
+    VectorDenseSetting,
 )
 from betterbole.evaluate.evaluator import Evaluator, LogDecorator
 from betterbole.evaluate.manager import EvaluatorManager
@@ -229,6 +230,8 @@ def load_settings_from_feature_meta(feature_meta_path: Path) -> List[Any]:
             settings.append(QuantileEmbSetting.from_dict(item))
         elif setting_type == "DENSE":
             settings.append(MinMaxDenseSetting.from_dict(item))
+        elif setting_type == "VECTOR_DENSE":
+            settings.append(VectorDenseSetting.from_dict(item))
         else:
             raise NotImplementedError(
                 f"Unsupported setting type in local sim loader: {setting_type}"

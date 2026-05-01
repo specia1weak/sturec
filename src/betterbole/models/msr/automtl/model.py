@@ -61,6 +61,7 @@ class AutoMTLModel(MSRModel):
         self.feature_settings = []
         self.sparse_field_names = []
         self.dense_field_names = []
+        self.dense_input_dim = 0
         self.embedding_dim = None
         for setting in manager.settings:
             if setting.field_name in excluded_fields:
@@ -70,8 +71,9 @@ class AutoMTLModel(MSRModel):
                     f"AutoMTLModel does not support sequence field '{setting.field_name}' yet."
                 )
             self.feature_settings.append(setting)
-            if setting.emb_type == EmbType.DENSE:
+            if setting.emb_type in (EmbType.DENSE, EmbType.VECTOR_DENSE):
                 self.dense_field_names.append(setting.field_name)
+                self.dense_input_dim += 1 if setting.emb_type == EmbType.DENSE else int(setting.embedding_dim)
             else:
                 self.sparse_field_names.append(setting.field_name)
                 if self.embedding_dim is None:
@@ -90,7 +92,7 @@ class AutoMTLModel(MSRModel):
         self.backbone = AutoMTLSuperNet(
             embedding_dim=self.embedding_dim,
             num_sparse_fields=len(self.sparse_field_names),
-            num_dense_fields=len(self.dense_field_names),
+            num_dense_fields=self.dense_input_dim,
             num_domains=num_domains,
             num_experts=num_experts,
             num_expert_layers=num_expert_layers,

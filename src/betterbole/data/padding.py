@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from typing import Dict, Literal
+from dataclasses import dataclass, field
+from functools import singledispatch
+from typing import TYPE_CHECKING, Dict, Iterable, Literal, Optional
 
 import numpy as np
 import torch
 
+from betterbole.core.interaction import Interaction
 from betterbole.emb.schema import (
     BaseSequenceSetting,
     EmbSetting,
@@ -16,7 +18,11 @@ from betterbole.emb.schema import (
     SeqGroupEmbSetting,
     SharedVocabSeqSetting,
     SparseSetEmbSetting,
+    VectorDenseSetting,
 )
+
+if TYPE_CHECKING:
+    from betterbole.emb import SchemaManager
 
 
 PaddingSide = Literal["left", "right"]
@@ -94,6 +100,28 @@ class DenseFormatter(ColumnFormatter):
 
 
 @dataclass(frozen=True)
+class VectorDenseFormatter(ColumnFormatter):
+    dim: int
+    zero_fill: bool = True
+
+    def format(self, data) -> torch.Tensor:
+        arr = np.zeros((len(data), self.dim), dtype=np.float32)
+        for i, row in enumerate(data):
+            if _is_missing_sequence(row) or len(row) == 0:
+                if not self.zero_fill:
+                    raise ValueError(
+                        f"Expected non-empty vector dim={self.dim}, but got an empty value at row {i}."
+                    )
+                continue
+
+            row_arr = np.asarray(row, dtype=np.float32).reshape(-1)
+            use_len = min(row_arr.shape[0], self.dim)
+            arr[i, :use_len] = row_arr[:use_len]
+
+        return torch.tensor(arr, dtype=torch.float32)
+
+
+@dataclass(frozen=True)
 class IntFormatter(ColumnFormatter):
     def format(self, data) -> torch.Tensor:
         if data.dtype == np.uint32:
@@ -166,52 +194,6 @@ class PaddedNestedSequenceFormatter(ColumnFormatter):
 DEFAULT_FALLBACK_FORMATTER = FallbackFormatter()
 
 
-def build_formatters_from_setting(setting: EmbSetting) -> Dict[str, ColumnFormatter]:
-    if isinstance(setting, SeqGroupEmbSetting):
-        formatters = {
-            seq_col: _build_sequence_formatter(
-                max_len=setting.max_len,
-                padding_side=getattr(setting, "padding_side", "right"),
-                target_setting=target_setting,
-            )
-            for seq_col, target_setting in setting.target_dict.items()
-        }
-        formatters[setting.seq_len_field_name] = IntFormatter()
-        return formatters
-
-    if isinstance(setting, SeqDenseSetting):
-        return {
-            setting.field_name: PaddedFloatSequenceFormatter(
-                max_len=setting.max_len,
-                padding_side=getattr(setting, "padding_side", "right"),
-            ),
-            setting.seq_len_field_name: IntFormatter(),
-        }
-
-    if isinstance(setting, SparseSetEmbSetting):
-        return {
-            setting.field_name: PaddedIntSequenceFormatter(
-                max_len=setting.max_len,
-                padding_side=getattr(setting, "padding_side", "right"),
-            )
-        }
-
-    if isinstance(setting, BaseSequenceSetting):
-        return {
-            setting.field_name: _build_sequence_formatter(
-                max_len=setting.max_len,
-                padding_side=getattr(setting, "padding_side", "right"),
-                target_setting=_resolve_target_setting(setting),
-            ),
-            setting.seq_len_field_name: IntFormatter(),
-        }
-
-    if setting.emb_type == EmbType.DENSE:
-        return {setting.field_name: DenseFormatter()}
-
-    return {setting.field_name: IntFormatter()}
-
-
 def _resolve_target_setting(setting: BaseSequenceSetting):
     if isinstance(setting, SharedVocabSeqSetting):
         return setting.target_setting
@@ -232,3 +214,184 @@ def _build_sequence_formatter(
             padding_side=padding_side,
         )
     return PaddedIntSequenceFormatter(max_len=max_len, padding_side=padding_side)
+
+
+@singledispatch
+def build_formatters_from_setting(setting: EmbSetting) -> Dict[str, ColumnFormatter]:
+    if isinstance(setting, VectorDenseSetting) or setting.emb_type == EmbType.VECTOR_DENSE:
+        return {
+            setting.field_name: VectorDenseFormatter(
+                dim=int(setting.embedding_dim),
+                zero_fill=getattr(setting, "zero_fill", True),
+            )
+        }
+    if setting.emb_type == EmbType.DENSE:
+        return {setting.field_name: DenseFormatter()}
+    return {setting.field_name: IntFormatter()}
+
+
+@build_formatters_from_setting.register
+def _(setting: SeqGroupEmbSetting) -> Dict[str, ColumnFormatter]:
+    formatters = {
+        seq_col: _build_sequence_formatter(
+            max_len=setting.max_len,
+            padding_side=getattr(setting, "padding_side", "right"),
+            target_setting=target_setting,
+        )
+        for seq_col, target_setting in setting.target_dict.items()
+    }
+    formatters[setting.seq_len_field_name] = IntFormatter()
+    return formatters
+
+
+@build_formatters_from_setting.register
+def _(setting: SeqDenseSetting) -> Dict[str, ColumnFormatter]:
+    return {
+        setting.field_name: PaddedFloatSequenceFormatter(
+            max_len=setting.max_len,
+            padding_side=getattr(setting, "padding_side", "right"),
+        ),
+        setting.seq_len_field_name: IntFormatter(),
+    }
+
+
+@build_formatters_from_setting.register
+def _(setting: SparseSetEmbSetting) -> Dict[str, ColumnFormatter]:
+    return {
+        setting.field_name: PaddedIntSequenceFormatter(
+            max_len=setting.max_len,
+            padding_side=getattr(setting, "padding_side", "right"),
+        )
+    }
+
+
+@build_formatters_from_setting.register
+def _(setting: BaseSequenceSetting) -> Dict[str, ColumnFormatter]:
+    formatters = {
+        setting.field_name: _build_sequence_formatter(
+            max_len=setting.max_len,
+            padding_side=getattr(setting, "padding_side", "right"),
+            target_setting=_resolve_target_setting(setting),
+        ),
+        setting.seq_len_field_name: IntFormatter(),
+    }
+    time_field_name = getattr(setting, "time_field_name", None)
+    if time_field_name:
+        formatters[time_field_name] = PaddedIntSequenceFormatter(
+            max_len=setting.max_len,
+            padding_side=getattr(setting, "padding_side", "right"),
+        )
+    return formatters
+
+
+def _dedupe_names(names: Iterable[str]) -> list[str]:
+    return list(dict.fromkeys(name for name in names if name))
+
+
+def _resolve_raw_read_col_names(
+    manager: "SchemaManager",
+    extra_col_names: Iterable[str],
+    extra_col_formatters: Dict[str, ColumnFormatter],
+) -> list[str]:
+    raw_col_names: list[str] = []
+    for setting in manager.settings:
+        if isinstance(setting, SeqGroupEmbSetting):
+            raw_col_names.extend(setting.target_dict.keys())
+        else:
+            raw_col_names.append(setting.field_name)
+        time_field_name = getattr(setting, "time_field_name", None)
+        if time_field_name:
+            raw_col_names.append(time_field_name)
+
+    raw_col_names.extend(manager.label_fields)
+    raw_col_names.extend(manager.domain_fields)
+    if manager.time_field:
+        raw_col_names.append(manager.time_field)
+
+    raw_col_names.extend(extra_col_names)
+    raw_col_names.extend(extra_col_formatters.keys())
+    return _dedupe_names(raw_col_names)
+
+
+@dataclass(frozen=True)
+class FeatureContext:
+    manager: "SchemaManager"
+    read_col_names: tuple[str, ...]
+    output_col_names: tuple[str, ...]
+    extra_col_formatters: Dict[str, ColumnFormatter] = field(default_factory=dict)
+
+    @classmethod
+    def from_manager(
+        cls,
+        manager: "SchemaManager",
+        extra_col_names: Optional[Iterable[str]] = None,
+        extra_col_formatters: Optional[Dict[str, ColumnFormatter]] = None,
+    ) -> "FeatureContext":
+        formatter_map = dict(extra_col_formatters or {})
+        extra_names = list(extra_col_names or [])
+        output_cols = _dedupe_names([*manager.fields(), *extra_names, *formatter_map.keys()])
+        return cls(
+            manager=manager,
+            read_col_names=tuple(output_cols),
+            output_col_names=tuple(output_cols),
+            extra_col_formatters=formatter_map,
+        )
+
+    @classmethod
+    def from_raw_manager(
+        cls,
+        manager: "SchemaManager",
+        extra_col_names: Optional[Iterable[str]] = None,
+        extra_col_formatters: Optional[Dict[str, ColumnFormatter]] = None,
+    ) -> "FeatureContext":
+        formatter_map = dict(extra_col_formatters or {})
+        extra_names = list(extra_col_names or [])
+        output_cols = _dedupe_names([*manager.fields(), *extra_names, *formatter_map.keys()])
+        read_cols = _resolve_raw_read_col_names(manager, extra_names, formatter_map)
+        return cls(
+            manager=manager,
+            read_col_names=tuple(read_cols),
+            output_col_names=tuple(output_cols),
+            extra_col_formatters=formatter_map,
+        )
+
+
+@dataclass
+class TensorFormatter:
+    context: FeatureContext
+    fallback_formatter: ColumnFormatter = DEFAULT_FALLBACK_FORMATTER
+    col_formatters: Dict[str, ColumnFormatter] = field(init=False)
+
+    def __post_init__(self):
+        self.col_formatters = self._compile_formatters()
+
+    def _compile_formatters(self) -> Dict[str, ColumnFormatter]:
+        formatters: Dict[str, ColumnFormatter] = {}
+        for setting in self.context.manager.settings:
+            formatters.update(build_formatters_from_setting(setting))
+
+        for ctx_col in (
+            *self.context.manager.label_fields,
+            *self.context.manager.domain_fields,
+            self.context.manager.time_field,
+        ):
+            if ctx_col and ctx_col not in formatters:
+                formatters[ctx_col] = self.fallback_formatter
+
+        formatters.update(self.context.extra_col_formatters)
+        return formatters
+
+    def format_tensors(self, batch_dict) -> Dict[str, torch.Tensor]:
+        tensor_dict = {}
+        for col, data in batch_dict.items():
+            formatter = self.col_formatters.get(col, self.fallback_formatter)
+            try:
+                tensor_dict[col] = formatter.format(data)
+            except Exception as exc:
+                raise RuntimeError(
+                    f"列 [{col}] 在转换为 Tensor 时发生错误，匹配到的 formatter 为: {formatter}。错误信息: {exc}"
+                ) from exc
+        return tensor_dict
+
+    def format(self, batch_dict) -> Interaction:
+        return Interaction(self.format_tensors(batch_dict))

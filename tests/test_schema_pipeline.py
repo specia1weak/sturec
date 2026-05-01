@@ -5,7 +5,8 @@ import polars as pl
 import torch
 
 from betterbole.core.enum_type import FeatureSource
-from betterbole.data.dataset import ParquetStreamDataset
+from betterbole.data.dataset import ParquetStreamDataset, RawParquetStreamDataset
+from betterbole.data.split import RandomRatioConfig, TimeSplitConfig
 from betterbole.emb import SchemaManager
 from betterbole.emb.emblayer import OmniEmbLayer
 from betterbole.emb.schema import (
@@ -96,6 +97,7 @@ def build_synthetic_lf() -> pl.LazyFrame:
         feature_mapping={
             "movie_id": "movie_id_seq",
             "genres": "genres_seq",
+            "timestamp": "action_timestamp",
         },
         label_col="label",
         seq_len_col="seq_len",
@@ -108,6 +110,7 @@ def build_settings():
         seq_len_field_name="seq_len",
         max_len=3,
         padding_side="right",
+        time_field_name="action_timestamp",
     )
     search_group = SeqGroupConfig(
         group_name="search",
@@ -194,10 +197,14 @@ class SchemaPipelineTest(unittest.TestCase):
 
             omni = OmniEmbLayer(manager=manager)
 
-            history_seq, history_target, history_len = omni.seq_groups["history"].fetch_all(batch)
+            history_seq, history_target, history_len, history_time = omni.seq_groups["history"].fetch_all(
+                batch,
+                include_time=True,
+            )
             self.assertEqual(history_seq.shape[0], 2)
             self.assertEqual(history_target.shape[0], 2)
             self.assertTrue(torch.equal(history_len, batch["seq_len"]))
+            self.assertTrue(torch.equal(history_time, batch["action_timestamp"]))
 
             named_embs = omni(
                 batch,
@@ -215,3 +222,85 @@ class SchemaPipelineTest(unittest.TestCase):
             self.assertEqual(named_embs["search_terms"].shape[0], 2)
             self.assertEqual(named_embs["recent_score_seq"].shape[0], 2)
             self.assertEqual(named_embs["catalog_group"].shape[0], 2)
+
+    def test_raw_dataset_pipeline_matches_transformed_dataset(self):
+        whole_lf = build_synthetic_lf()
+        settings = build_settings()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = SchemaManager(
+                settings,
+                tmpdir,
+                time_field="timestamp",
+                label_fields="label",
+                domain_fields="gender",
+            )
+            manager.fit(whole_lf, low_memory=False)
+            transformed_lf = manager.transform(whole_lf)
+
+            transformed_path, _, _ = manager.save_as_dataset(transformed_lf, None, None, output_dir=tmpdir, redo=True)
+            raw_path = f"{tmpdir}/raw_input.parquet"
+            whole_lf.sink_parquet(raw_path)
+
+            transformed_ds = ParquetStreamDataset(
+                transformed_path,
+                manager,
+                batch_size=2,
+                shuffle=False,
+                drop_last=False,
+            )
+            raw_ds = RawParquetStreamDataset(
+                raw_path,
+                manager,
+                batch_size=2,
+                shuffle=False,
+                drop_last=False,
+            )
+
+            transformed_batch = next(iter(transformed_ds))
+            raw_batch = next(iter(raw_ds))
+
+            self.assertEqual(set(transformed_batch.columns), set(raw_batch.columns))
+            for field_name in transformed_batch.columns:
+                self.assertTrue(torch.equal(transformed_batch[field_name], raw_batch[field_name]), field_name)
+
+    def test_split_dataset_accepts_typed_config(self):
+        whole_lf = build_synthetic_lf()
+        settings = build_settings()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = SchemaManager(
+                settings,
+                tmpdir,
+                time_field="timestamp",
+                label_fields="label",
+                domain_fields="gender",
+            )
+
+            ratio_split = manager.split_dataset(
+                whole_lf,
+                strategy="random_ratio",
+                config=RandomRatioConfig(train_ratio=0.5, valid_ratio=0.25, group_by="user_id"),
+            )
+            ratio_counts = [split.collect().height for split in ratio_split]
+            self.assertEqual(sum(ratio_counts), whole_lf.collect().height)
+
+            compat_ratio_split = manager.split_dataset(
+                whole_lf,
+                strategy="random_ratio",
+                train_ratio=0.5,
+                valid_ratio=0.25,
+                group_by="user_id",
+            )
+            compat_ratio_counts = [split.collect().height for split in compat_ratio_split]
+            self.assertEqual(ratio_counts, compat_ratio_counts)
+
+            time_split = manager.split_dataset(
+                whole_lf,
+                strategy="time",
+                config=TimeSplitConfig(valid_start=20, test_start=30),
+            )
+            train_df, valid_df, test_df = [split.collect() for split in time_split]
+            self.assertTrue((train_df["timestamp"] < 20).all())
+            self.assertTrue(((valid_df["timestamp"] >= 20) & (valid_df["timestamp"] < 30)).all())
+            self.assertTrue((test_df["timestamp"] >= 30).all())

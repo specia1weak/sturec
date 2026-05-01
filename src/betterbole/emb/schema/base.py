@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Literal
+from typing import Any, Dict, List, Literal, Optional
 
 import polars as pl
 import torch
@@ -17,6 +17,7 @@ class EmbType(Enum):
     SPARSE_SEQ = "sparse_seq"
     SPARSE_SET = "sparse_set"
     DENSE = "dense"
+    VECTOR_DENSE = "vector_dense"
     DENSE_SEQ = "dense_seq"
 
 
@@ -26,6 +27,7 @@ class SeqGroupConfig:
     seq_len_field_name: str
     max_len: int
     padding_side: Literal["left", "right"]
+    time_field_name: Optional[str] = None
 
 
 class EmbSetting(ABC):

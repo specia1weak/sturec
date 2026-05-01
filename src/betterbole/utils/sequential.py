@@ -93,6 +93,19 @@ def extract_history_sequences(
 
     return lf
 
+def extract_seq_len(
+        lf: pl.LazyFrame,
+        seq_col: str,
+        seq_len_col: str = "seq_len"
+) -> pl.LazyFrame:
+    return lf.with_columns(
+        pl.col(seq_col)
+        .list.len()
+        .fill_null(0)
+        .cast(pl.UInt32)
+        .alias(seq_len_col)
+    )
+
 def extract_history_items(
         lf: pl.LazyFrame,
         max_seq_len: int,

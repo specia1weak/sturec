@@ -1,4 +1,4 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import polars as pl
 import torch
@@ -96,52 +96,110 @@ class MinMaxDenseSetting(BaseNumericalSetting):
 
 
 class VectorDenseSetting(BaseNumericalSetting):
-    emb_type = EmbType.DENSE
+    emb_type = EmbType.VECTOR_DENSE
 
-    def __init__(self, field_name: str, source: FeatureSource, vector_dim: int, zero_fill: bool = True):
-        super().__init__(field_name=field_name, source=source, embedding_dim=vector_dim)
-        self.vector_dim = vector_dim
+    def __init__(self, field_name: str, source: 'FeatureSource', embedding_dim: Optional[int] = None,
+                 zero_fill: bool = True):
+        super().__init__(field_name=field_name, source=source, embedding_dim=embedding_dim or 0)
         self.zero_fill = zero_fill
-        self.is_fitted = True
+        self.is_fitted = embedding_dim is not None
 
     def get_fit_exprs(self) -> List[pl.Expr]:
-        return []
+        if self.is_fitted:
+            return []
+
+        len_expr = pl.col(self.field_name).drop_nulls().list.len()
+        return [
+            len_expr.value_counts().implode().alias(f"{self.field_name}_len_counts"),
+            pl.col(self.field_name).is_null().sum().alias(f"{self.field_name}_null_count"),
+            len_expr.eq(0).sum().alias(f"{self.field_name}_empty_count"),
+        ]
 
     def parse_fit_result(self, result_df: pl.DataFrame):
-        return
+        if self.is_fitted:
+            return
+
+        len_counts_key = f"{self.field_name}_len_counts"
+        len_rows = result_df.get_column(len_counts_key).to_list()[0]
+        null_count = int(result_df.get_column(f"{self.field_name}_null_count")[0] or 0)
+        empty_count = int(result_df.get_column(f"{self.field_name}_empty_count")[0] or 0)
+
+        length_distribution: Dict[int, int] = {}
+        for row in len_rows or []:
+            count = row.get("count", row.get("counts", 0))
+            length = None
+            for key, value in row.items():
+                if key not in ("count", "counts"):
+                    length = value
+                    break
+            if length is None:
+                continue
+            length_distribution[int(length)] = int(count)
+
+        non_empty_distribution = {
+            int(length): int(count)
+            for length, count in length_distribution.items()
+            if int(length) > 0 and int(count) > 0
+        }
+
+        if not non_empty_distribution:
+            raise ValueError(
+                f"Feature '{self.field_name}' has no non-empty vectors in training data. "
+                f"null_rows={null_count}, empty_rows={empty_count}. "
+                "Please set `embedding_dim` explicitly if this feature should be kept."
+            )
+
+        if len(non_empty_distribution) != 1:
+            dist_lines = [
+                f"  {length} -> {count} rows"
+                for length, count in sorted(non_empty_distribution.items())
+            ]
+            distribution_text = "\n".join(dist_lines)
+            raise ValueError(
+                f"Feature '{self.field_name}' has inconsistent vector lengths on training data.\n"
+                f"Observed non-empty length distribution:\n{distribution_text}\n"
+                f"null_rows={null_count}, empty_rows={empty_count}\n"
+                "Please set `embedding_dim` explicitly for this feature."
+            )
+
+        self.embedding_dim = next(iter(non_empty_distribution))
+        self.is_fitted = True
 
     def get_transform_expr(self) -> pl.Expr:
-        zero_vector = [0.0] * self.vector_dim
-        expr = pl.col(self.field_name).cast(pl.List(pl.Float32))
-        if self.zero_fill:
-            expr = expr.fill_null(zero_vector)
-        return (
-            pl.when(expr.list.len() == self.vector_dim)
-            .then(expr)
-            .otherwise(pl.lit(zero_vector, dtype=pl.List(pl.Float32)))
-            .alias(self.field_name)
-        )
+        if not self.is_fitted or not self.embedding_dim:
+            raise RuntimeError(f"Feature '{self.field_name}' is not fitted yet. embedding_dim is unknown.")
+
+        # Keep the raw float list column. Fixed-width padding/truncation is
+        # handled in the dataset formatter so checkpoints preserve the original
+        # vector information instead of silently zeroing mismatched rows.
+        return pl.col(self.field_name).cast(pl.List(pl.Float32)).alias(self.field_name)
 
     def to_dict(self) -> Dict[str, Any]:
         data = super().to_dict()
-        data["vector_dim"] = self.vector_dim
+        data["embedding_dim"] = self.embedding_dim
         data["zero_fill"] = self.zero_fill
         return data
 
+    @property
+    def compatible_type_names(self) -> set[str]:
+        # Backward compatibility: older checkpoints stored vector dense as DENSE.
+        return {self.serialized_type_name, EmbType.DENSE.name}
+
     def load_state(self, state_dict: Dict[str, Any]):
         super().load_state(state_dict)
-        self.vector_dim = state_dict.get("vector_dim", self.vector_dim)
+        self.embedding_dim = state_dict.get("embedding_dim", self.embedding_dim)
         self.zero_fill = state_dict.get("zero_fill", self.zero_fill)
+        self.is_fitted = self.embedding_dim is not None and self.embedding_dim > 0
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "VectorDenseSetting":
         obj = cls(
             field_name=data["field_name"],
             source=FeatureSource[data["feature_source"]],
-            vector_dim=data["vector_dim"],
+            embedding_dim=data.get("embedding_dim", data.get("embedding_size")),
             zero_fill=data.get("zero_fill", True),
         )
-        obj.is_fitted = data.get("is_fitted", True)
+        obj.is_fitted = data.get("is_fitted", obj.embedding_dim is not None)
         return obj
 
     def compute_tensor(self, interaction: dict, emb_modules: nn.ModuleDict) -> torch.Tensor:

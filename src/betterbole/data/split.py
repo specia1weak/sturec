@@ -1,146 +1,235 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from typing import Optional, Callable
+from dataclasses import dataclass, fields
+from pathlib import Path
+from typing import Any, Callable, Dict, Generic, Optional, Type, TypeVar, Union
 
 import polars as pl
-from pathlib import Path
 
-@dataclass
+
+@dataclass(frozen=True)
 class SplitContext:
-    uid_field: str
-    iid_field: str
-    time_field: Optional[str]  # 允许为空，供不需要时间的策略使用
-    checkpoint_fn: Callable[[pl.LazyFrame], pl.LazyFrame]  # 注入落盘动作，而不是依赖主类方法
+    uid_field: Optional[str]
+    iid_field: Optional[str]
+    time_field: Optional[str]
+    checkpoint_fn: Callable[[pl.LazyFrame], pl.LazyFrame]
 
-class BaseSplitStrategy(ABC):
-    def __init__(self, context: SplitContext):
+
+@dataclass(frozen=True)
+class LooConfig:
+    k_core: int = 3
+
+
+@dataclass(frozen=True)
+class SequentialRatioConfig:
+    train_ratio: float = 0.8
+    valid_ratio: float = 0.1
+
+
+@dataclass(frozen=True)
+class TimeSplitConfig:
+    valid_start: Any
+    test_start: Any
+
+
+@dataclass(frozen=True)
+class RandomRatioConfig:
+    train_ratio: float = 0.8
+    valid_ratio: float = 0.1
+    group_by: Optional[str] = None
+
+
+SplitConfig = Union[LooConfig, SequentialRatioConfig, TimeSplitConfig, RandomRatioConfig]
+ConfigT = TypeVar("ConfigT")
+
+
+class BaseSplitStrategy(Generic[ConfigT], ABC):
+    config_type: Type[ConfigT]
+
+    def __init__(self, context: SplitContext, config: ConfigT):
         self.ctx = context
+        self.config = config
 
     @abstractmethod
-    def split(self, lf: pl.LazyFrame, output_dir: Path, redo: bool, **kwargs) -> tuple:
-        """所有具体的切分策略都必须实现这个方法"""
+    def split(self, lf: pl.LazyFrame, output_dir: Path, redo: bool) -> tuple:
         pass
 
 
+class LooSplitStrategy(BaseSplitStrategy[LooConfig]):
+    config_type = LooConfig
 
-class LooSplitStrategy(BaseSplitStrategy):
-    def split(self, lf: pl.LazyFrame, output_dir: Path, redo: bool, **kwargs):
-        k_core = kwargs.get('k_core', 3)
-        print(f"[*] 正在执行 LOO 切分，K-core={k_core}...")
+    def split(self, lf: pl.LazyFrame, output_dir: Path, redo: bool):
+        print(f"[*] 正在执行 LOO 切分，K-core={self.config.k_core}...")
+        if self.ctx.time_field is None:
+            raise RuntimeError("执行 loo 切分必须在 SplitContext 中指定 time_field！")
 
-        # 直接使用 ctx 里的纯数据字段
-        processed_lf = lf.with_columns([
-            pl.count(self.ctx.iid_field).over(self.ctx.uid_field).alias("user_seq_len"),
-            pl.col(self.ctx.time_field).rank(descending=True, method="ordinal").over(self.ctx.uid_field).alias(
-                "reverse_rank")
-        ]).filter(
-            pl.col("user_seq_len") >= k_core
-        )
+        processed_lf = lf.with_columns(
+            [
+                pl.count(self.ctx.iid_field).over(self.ctx.uid_field).alias("user_seq_len"),
+                pl.col(self.ctx.time_field)
+                .rank(descending=True, method="ordinal")
+                .over(self.ctx.uid_field)
+                .alias("reverse_rank"),
+            ]
+        ).filter(pl.col("user_seq_len") >= self.config.k_core)
 
-        # 调用被注入进来的回调函数，不关心它在主类里是怎么实现的
         checkpoint_lf = self.ctx.checkpoint_fn(processed_lf)
-
-        train_lf = checkpoint_lf.filter(pl.col("reverse_rank") >= 3).select(
-            pl.all().exclude("user_seq_len", "reverse_rank"))
-        valid_lf = checkpoint_lf.filter(pl.col("reverse_rank") == 2).select(
-            pl.all().exclude("user_seq_len", "reverse_rank"))
-        test_lf = checkpoint_lf.filter(pl.col("reverse_rank") == 1).select(
-            pl.all().exclude("user_seq_len", "reverse_rank"))
-
+        drop_cols = ["user_seq_len", "reverse_rank"]
+        train_lf = checkpoint_lf.filter(pl.col("reverse_rank") >= 3).select(pl.all().exclude(drop_cols))
+        valid_lf = checkpoint_lf.filter(pl.col("reverse_rank") == 2).select(pl.all().exclude(drop_cols))
+        test_lf = checkpoint_lf.filter(pl.col("reverse_rank") == 1).select(pl.all().exclude(drop_cols))
         return train_lf, valid_lf, test_lf
 
 
-class SequentialRatioStrategy(BaseSplitStrategy):
-    def split(self, lf: pl.LazyFrame, output_dir: Path, redo: bool, **kwargs) -> tuple:
-        train_ratio = kwargs.get('train_ratio', 0.8)
-        valid_ratio = kwargs.get('valid_ratio', 0.1)
+class SequentialRatioStrategy(BaseSplitStrategy[SequentialRatioConfig]):
+    config_type = SequentialRatioConfig
 
+    def split(self, lf: pl.LazyFrame, output_dir: Path, redo: bool) -> tuple:
         if self.ctx.time_field is None:
             raise RuntimeError("执行 sequential_ratio 切分必须在 SplitContext 中指定 time_field！")
 
+        train_ratio = self.config.train_ratio
+        valid_ratio = self.config.valid_ratio
+        test_ratio = 1 - train_ratio - valid_ratio
         print(
-            f"[*] 正在执行顺序时序比例 (Sequential Ratio) 切分，比例: {train_ratio}:{valid_ratio}:{1 - train_ratio - valid_ratio:.2f}...")
+            f"[*] 正在执行顺序时序比例 (Sequential Ratio) 切分，比例: "
+            f"{train_ratio}:{valid_ratio}:{test_ratio:.2f}..."
+        )
 
-        # 1. 全局按时间升序排序 (历史在前，未来在后)
-        processed_lf = lf.sort(self.ctx.time_field)
-        # 2. 调用注入的 checkpoint 动作，落盘锁死物理时间顺序
-        checkpoint_lf = self.ctx.checkpoint_fn(processed_lf)
-        # 3. 添加连续的物理行号
-        checkpoint_lf = checkpoint_lf.with_row_index("row_idx")
-        # 4. 获取精确切分点 (对 checkpoint_lf 做 count 是瞬间完成的)
-        total_rows = checkpoint_lf.select(pl.len()).collect().item()
-        train_idx = int(total_rows * train_ratio)
-        valid_idx = train_idx + int(total_rows * valid_ratio)
+        time_col = self.ctx.time_field
+        time_count_lf = (
+            lf.group_by(time_col)
+            .len()
+            .sort(time_col)
+            .with_columns(pl.col("len").cum_sum().alias("cum_rows"))
+        )
+        total_rows = time_count_lf.select(pl.col("len").sum().alias("total_rows")).collect(engine="streaming").item()
+        train_cut = int(total_rows * train_ratio)
+        valid_cut = train_cut + int(total_rows * valid_ratio)
 
-        # 5. 按行号区间过滤，并丢弃辅助的行号列
-        train_lf = checkpoint_lf.filter(pl.col("row_idx") < train_idx).drop("row_idx")
-        valid_lf = checkpoint_lf.filter((pl.col("row_idx") >= train_idx) & (pl.col("row_idx") < valid_idx)).drop("row_idx")
-        test_lf = checkpoint_lf.filter(pl.col("row_idx") >= valid_idx).drop("row_idx")
+        boundary_df = (
+            time_count_lf.select(
+                [
+                    pl.col(time_col).filter(pl.col("cum_rows") >= train_cut).first().alias("valid_start"),
+                    pl.col(time_col).filter(pl.col("cum_rows") >= valid_cut).first().alias("test_start"),
+                ]
+            ).collect(engine="streaming")
+        )
+        valid_start = boundary_df["valid_start"][0]
+        test_start = boundary_df["test_start"][0]
 
+        train_lf = lf.filter(pl.col(time_col) < valid_start)
+        valid_lf = lf.filter((pl.col(time_col) >= valid_start) & (pl.col(time_col) < test_start))
+        test_lf = lf.filter(pl.col(time_col) >= test_start)
         return train_lf, valid_lf, test_lf
 
 
-class TimeSplitStrategy(BaseSplitStrategy):
-    def split(self, lf: pl.LazyFrame, output_dir: Path, redo: bool, **kwargs) -> tuple:
-        # 这个策略特有的必要参数
-        valid_start = kwargs.get('valid_start')
-        test_start = kwargs.get('test_start')
+class TimeSplitStrategy(BaseSplitStrategy[TimeSplitConfig]):
+    config_type = TimeSplitConfig
 
-        if valid_start is None or test_start is None:
-            raise RuntimeError("执行 time 切分必须在 kwargs 中传入 valid_start 和 test_start！")
+    def split(self, lf: pl.LazyFrame, output_dir: Path, redo: bool) -> tuple:
         if self.ctx.time_field is None:
             raise RuntimeError("执行 time 切分必须在 SplitContext 中指定 time_field！")
-        print(f"[*] 正在执行绝对时间阈值 (Time) 切分，train_end={valid_start}, valid_end={test_start}...")
-        time_expr = pl.col(self.ctx.time_field)
-        # 除非上游的 lf 经历了极端复杂的 join，通常不用在这层做 checkpoint
-        train_lf = lf.filter(time_expr < valid_start)
-        valid_lf = lf.filter((time_expr >= valid_start) & (time_expr < test_start))
-        test_lf = lf.filter(time_expr >= test_start)
 
+        print(
+            f"[*] 正在执行绝对时间阈值 (Time) 切分，"
+            f"train_end={self.config.valid_start}, valid_end={self.config.test_start}..."
+        )
+        time_expr = pl.col(self.ctx.time_field)
+        train_lf = lf.filter(time_expr < self.config.valid_start)
+        valid_lf = lf.filter((time_expr >= self.config.valid_start) & (time_expr < self.config.test_start))
+        test_lf = lf.filter(time_expr >= self.config.test_start)
         return train_lf, valid_lf, test_lf
 
 
-class RandomRatioStrategy(BaseSplitStrategy):
-    def split(self, lf: pl.LazyFrame, output_dir: Path, redo: bool, **kwargs) -> tuple:
-        train_ratio = kwargs.get('train_ratio', 0.8)
-        valid_ratio = kwargs.get('valid_ratio', 0.1)
-        group_by = kwargs.get('group_by', None)
+class RandomRatioStrategy(BaseSplitStrategy[RandomRatioConfig]):
+    config_type = RandomRatioConfig
+
+    def split(self, lf: pl.LazyFrame, output_dir: Path, redo: bool) -> tuple:
+        train_ratio = self.config.train_ratio
+        valid_ratio = self.config.valid_ratio
+        group_by = self.config.group_by
 
         group_msg = f"按 '{group_by}' 分组" if group_by else "全局"
         print(
-            f"[*] 正在执行{group_msg}随机比例 (Random Ratio) 切分，比例: {train_ratio}:{valid_ratio}:{1 - train_ratio - valid_ratio:.2f}...")
-        # 1. 构造动态的总长度表达式
-        # 如果有 group_by，获取的是该组的总行数；否则是全局总行数
-        len_expr = pl.len().over(group_by) if group_by else pl.len()
+            f"[*] 正在执行{group_msg}随机比例 (Random Ratio) 切分，"
+            f"比例: {train_ratio}:{valid_ratio}:{1 - train_ratio - valid_ratio:.2f}..."
+        )
 
-        # 构造局部/全局随机乱序 ID
+        len_expr = pl.len().over(group_by) if group_by else pl.len()
         row_idx_expr = pl.int_range(0, pl.len()).shuffle(seed=42)
         if group_by:
             row_idx_expr = row_idx_expr.over(group_by)
 
-        # 2. 使用 cast(pl.Int64) 完全复刻原代码中 int() 的向下取整逻辑
         train_idx_expr = (len_expr * train_ratio).cast(pl.Int64)
         valid_idx_expr = train_idx_expr + (len_expr * valid_ratio).cast(pl.Int64)
-
-        # 3. 将计算好的辅助列合并到数据流中
         processed_lf = lf.with_columns(
             row_idx_expr.alias("row_idx"),
             train_idx_expr.alias("train_idx"),
-            valid_idx_expr.alias("valid_idx")
+            valid_idx_expr.alias("valid_idx"),
         )
 
-        # 4. 调用 checkpoint (保留你原本的流水线缓存/执行节点)
         checkpoint_lf = self.ctx.checkpoint_fn(processed_lf)
-        # 5. 根据精准的整数索引进行过滤，最后再抛弃辅助列
         temp_cols = ["row_idx", "train_idx", "valid_idx"]
         train_lf = checkpoint_lf.filter(pl.col("row_idx") < pl.col("train_idx")).drop(temp_cols)
-        valid_lf = checkpoint_lf.filter((pl.col("row_idx") >= pl.col("train_idx")) & (pl.col("row_idx") < pl.col("valid_idx"))).drop(temp_cols)
+        valid_lf = checkpoint_lf.filter(
+            (pl.col("row_idx") >= pl.col("train_idx")) & (pl.col("row_idx") < pl.col("valid_idx"))
+        ).drop(temp_cols)
         test_lf = checkpoint_lf.filter(pl.col("row_idx") >= pl.col("valid_idx")).drop(temp_cols)
         return train_lf, valid_lf, test_lf
 
-SPLIT_STRATEGIES = {
+
+SPLIT_STRATEGIES: Dict[str, Type[BaseSplitStrategy]] = {
     "loo": LooSplitStrategy,
     "time": TimeSplitStrategy,
     "sequential_ratio": SequentialRatioStrategy,
-    "random_ratio": RandomRatioStrategy
+    "random_ratio": RandomRatioStrategy,
 }
+
+SPLIT_CONFIG_TYPES: Dict[str, Type[Any]] = {
+    "loo": LooConfig,
+    "time": TimeSplitConfig,
+    "sequential_ratio": SequentialRatioConfig,
+    "random_ratio": RandomRatioConfig,
+}
+
+
+def build_split_config(strategy: str, **kwargs) -> SplitConfig:
+    config_cls = SPLIT_CONFIG_TYPES.get(strategy)
+    if config_cls is None:
+        raise ValueError(f"未知的切分策略: {strategy}")
+
+    allowed_fields = {item.name for item in fields(config_cls)}
+    unknown_fields = sorted(set(kwargs) - allowed_fields)
+    if unknown_fields:
+        raise TypeError(
+            f"切分策略 '{strategy}' 不接受参数: {unknown_fields}。"
+            f"允许参数为: {sorted(allowed_fields)}"
+        )
+
+    return config_cls(**kwargs)
+
+
+def create_split_strategy(
+    strategy: str,
+    context: SplitContext,
+    config: Optional[SplitConfig] = None,
+    **kwargs,
+) -> BaseSplitStrategy:
+    strategy_cls = SPLIT_STRATEGIES.get(strategy)
+    if strategy_cls is None:
+        raise ValueError(f"未知的切分策略: {strategy}")
+
+    if config is None:
+        config = build_split_config(strategy, **kwargs)
+    elif kwargs:
+        raise TypeError("请在 split_dataset 中二选一：传入显式 config，或传入兼容 kwargs。")
+
+    if not isinstance(config, strategy_cls.config_type):
+        raise TypeError(
+            f"切分策略 '{strategy}' 期望配置类型为 {strategy_cls.config_type.__name__}，"
+            f"实际得到 {type(config).__name__}"
+        )
+
+    return strategy_cls(context=context, config=config)

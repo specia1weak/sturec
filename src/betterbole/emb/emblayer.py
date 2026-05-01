@@ -337,6 +337,7 @@ class SeqGroupView(EmbView):
         # 预加载对齐的 target 设置与 seq_len 字段
         self.target_settings = []
         self.seq_len_field = None
+        self.time_field = None
         self._target_forward_valid = True
 
         for field in self.include_fields:
@@ -351,6 +352,17 @@ class SeqGroupView(EmbView):
 
             if self.seq_len_field is None and hasattr(setting, 'seq_len_field_name'):
                 self.seq_len_field = setting.seq_len_field_name
+            if hasattr(setting, 'time_field_name'):
+                setting_time_field = setting.time_field_name
+                if setting_time_field is None:
+                    continue
+                if self.time_field is None:
+                    self.time_field = setting_time_field
+                elif self.time_field != setting_time_field:
+                    raise ValueError(
+                        f"Seq group '{self.group_name}' has inconsistent time_field_name: "
+                        f"{self.time_field} vs {setting_time_field}"
+                    )
 
     def forward_target(self, interaction, split_by: str = "none"):
         # 实际上所有setting必须拥有target_setting forward_target才不会有歧义
@@ -363,12 +375,18 @@ class SeqGroupView(EmbView):
             computed_results.append((target_s, emb))
         return self.omni.format_output(computed_results, split_by)
 
-    def fetch_all(self, interaction):
-        """一键打包返回：(序列特征拼接, 目标特征拼接, 序列长度)"""
+    def fetch_all(self, interaction, include_time: bool = False):
+        """默认返回 (seq_emb, target_emb, seq_len)，需要时间时返回四元组。"""
         seq_emb = self.forward(interaction, split_by="none")
-        tar_emb = self.forward_target(interaction, split_by="none") if self._target_forward_valid else ValueError("存在部分setting没有target_setting，函数中断")
+        tar_emb = (
+            self.forward_target(interaction, split_by="none")
+            if self._target_forward_valid
+            else ValueError("存在部分setting没有target_setting，函数中断")
+        )
         seq_len = interaction[self.seq_len_field] if self.seq_len_field else None
-
+        time = interaction[self.time_field] if self.time_field else None
+        if include_time:
+            return seq_emb, tar_emb, seq_len, time
         return seq_emb, tar_emb, seq_len
 
 class OmniEmbLayer(nn.Module):

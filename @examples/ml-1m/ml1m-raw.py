@@ -5,7 +5,7 @@ from torch.utils.data import DataLoader
 
 from betterbole.data.dataset import ParquetStreamDataset
 from betterbole.emb.schema import SparseEmbSetting, SparseSetEmbSetting, SeqGroupEmbSetting, SharedVocabSeqSetting, \
-    SeqGroupConfig
+    SeqGroupConfig, SparseSeqEmbSetting
 from betterbole.emb import SchemaManager
 import polars as pl
 
@@ -33,7 +33,7 @@ change_root_workdir()
 @dataclass
 class MovieLensConfig(ConfigBase):
     experiment_name: str = "ml1m"
-    dataset_name: str = "movie-lens"
+    dataset_name: str = "movie-lens-raw"
     emb_dim: int = 16
 
 cfg: MovieLensConfig = ParamManager(MovieLensConfig).build()
@@ -263,8 +263,8 @@ if __name__ == '__main__':
         SparseEmbSetting("gender", FeatureSource.USER, 8),
         SparseEmbSetting("occupation", FeatureSource.USER, 8),
         genres_setting,
-        SharedVocabSeqSetting("movie_id_seq", item_setting, group=history_group),
-        SharedVocabSeqSetting("genres_seq", genres_setting, group=history_group)
+        SparseSeqEmbSetting("movie_id_seq",group=history_group, embedding_dim=16, min_freq=10),
+        SparseSeqEmbSetting("genres_seq",group=history_group, embedding_dim=8, min_freq=10)
     ]
 
     from betterbole.datasets.movielens import MovieLensDataset

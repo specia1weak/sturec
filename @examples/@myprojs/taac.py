@@ -8,11 +8,13 @@ from betterbole.core.train.context import TrainerDataLoaders, TrainerComponents
 from betterbole.core.train.trainer import BaseTrainer
 from betterbole.data.dataset import ParquetStreamDataset
 from betterbole.datasets.taac2026 import TAAC2026Dataset
-from betterbole.emb.schema import SparseEmbSetting, SparseSetEmbSetting
+from betterbole.emb.emblayer import OmniEmbLayer
+from betterbole.emb.schema import SparseEmbSetting, SparseSetEmbSetting, VectorDenseSetting, SparseSeqEmbSetting, \
+    SeqGroupConfig
 from betterbole.emb import SchemaManager
 import polars as pl
 from betterbole.core.enum_type import FeatureSource
-from betterbole.evaluate.evaluator import Evaluator
+from betterbole.evaluate.evaluator import Evaluator, LogDecorator
 
 from torch import nn
 
@@ -23,6 +25,7 @@ from betterbole.models.msr import MSRModel
 from betterbole.models.utils.general import ModuleFactory
 from betterbole.utils.optimize import split_params_by_decay
 from betterbole.experiment import change_root_workdir
+from betterbole.utils.sequential import extract_seq_len
 
 change_root_workdir()
 
@@ -54,22 +57,71 @@ if __name__ == '__main__':
 
     user_setting = SparseEmbSetting("user_id", FeatureSource.USER_ID, cfg.id_emb, min_freq=10, use_oov=True)
     item_setting = SparseEmbSetting("item_id", FeatureSource.ITEM_ID, cfg.id_emb, min_freq=10, use_oov=True)
-
     user_sparse_settings = [SparseEmbSetting(col, FeatureSource.USER, embedding_dim=16, min_freq=10) for col in TAAC2026Dataset.user_sparse_cols]
-    item_sparse_settings = [SparseEmbSetting(col, FeatureSource.USER, embedding_dim=16, min_freq=10) for col in TAAC2026Dataset.item_sparse_cols]
+    item_sparse_settings = [SparseEmbSetting(col, FeatureSource.ITEM, embedding_dim=16, min_freq=10) for col in TAAC2026Dataset.item_sparse_cols]
+    user_multi_settings = [SparseSetEmbSetting(col, FeatureSource.USER, embedding_dim=16, min_freq=10) for col in TAAC2026Dataset.user_varlen_sparse_cols]
+    user_vector_settings = [VectorDenseSetting(col, FeatureSource.USER) for col in TAAC2026Dataset.user_dense_emb_cols]
+    item_multi_settings = [SparseSetEmbSetting(col, FeatureSource.ITEM, embedding_dim=16, min_freq=10) for col in TAAC2026Dataset.item_varlen_sparse_cols]
+
+    domain_a_group = SeqGroupConfig(
+        "domain_a_seq", "domain_a_seq_len", max_len=20, padding_side="left"
+    )
+    domain_a_feats = [TAAC2026Dataset.seq_domains["A"]["id"]] + TAAC2026Dataset.seq_domains["A"]["attrs"]
+    domain_a_seq_settings = [SparseSeqEmbSetting(col, domain_a_group, embedding_dim=16, min_freq=10)
+                             for col in domain_a_feats]
+
+    # ==================== Domain B ====================
+    domain_b_group = SeqGroupConfig(
+        "domain_b_seq", "domain_b_seq_len", max_len=20, padding_side="left"
+    )
+    domain_b_feats = [TAAC2026Dataset.seq_domains["B"]["id"]] + TAAC2026Dataset.seq_domains["B"]["attrs"]
+    domain_b_seq_settings = [
+        SparseSeqEmbSetting(col, domain_b_group, embedding_dim=16, min_freq=10)
+        for col in domain_b_feats
+    ]
+
+    # ==================== Domain C ====================
+    domain_c_group = SeqGroupConfig(
+        "domain_c_seq", "domain_c_seq_len", max_len=20, padding_side="left"
+    )
+    domain_c_feats = [TAAC2026Dataset.seq_domains["C"]["id"]] + TAAC2026Dataset.seq_domains["C"]["attrs"]
+    domain_c_seq_settings = [
+        SparseSeqEmbSetting(col, domain_c_group, embedding_dim=16, min_freq=10)
+        for col in domain_c_feats
+    ]
+
+    # ==================== Domain D ====================
+    domain_d_group = SeqGroupConfig(
+        "domain_d_seq", "domain_d_seq_len", max_len=20, padding_side="left"
+    )
+    domain_d_feats = [TAAC2026Dataset.seq_domains["D"]["id"]] + TAAC2026Dataset.seq_domains["D"]["attrs"]
+    domain_d_seq_settings = [
+        SparseSeqEmbSetting(col, domain_d_group, embedding_dim=16, min_freq=10)
+        for col in domain_d_feats
+    ]
 
     settings_list = [
         user_setting,
         item_setting,
         *user_sparse_settings,
-        *item_sparse_settings
+        *item_sparse_settings,
+        *user_multi_settings,
+        *user_vector_settings,
+        *item_multi_settings,
+        *domain_a_seq_settings,
+        *domain_b_seq_settings,
+        *domain_c_seq_settings,
+        *domain_d_seq_settings,
     ]
 
     from betterbole.experiment import preset_workdir
     WORKDIR = preset_workdir(cfg.dataset_name)
     manager = SchemaManager(settings_list, WORKDIR, time_field="timestamp", label_fields="label_type")
     whole_lf: pl.lazyframe = TAAC2026Dataset.WHOLE_LF
-
+    whole_lf = extract_seq_len(whole_lf, seq_col=TAAC2026Dataset.seq_domains["A"]["id"], seq_len_col="domain_a_seq_len")
+    whole_lf = extract_seq_len(whole_lf, seq_col=TAAC2026Dataset.seq_domains["B"]["id"], seq_len_col="domain_b_seq_len")
+    whole_lf = extract_seq_len(whole_lf, seq_col=TAAC2026Dataset.seq_domains["C"]["id"], seq_len_col="domain_c_seq_len")
+    whole_lf = extract_seq_len(whole_lf, seq_col=TAAC2026Dataset.seq_domains["D"]["id"], seq_len_col="domain_d_seq_len")
     ## 处理中
     train_raw, valid_raw, test_raw = manager.split_dataset(whole_lf, strategy="sequential_ratio")
 
@@ -80,9 +132,9 @@ if __name__ == '__main__':
 
     print(train_lf.select("timestamp").head(5).collect())
     print(valid_lf.select("timestamp").head(5).collect())
-    train_lf = train_lf.sort(by="timestamp")
     train_path, valid_path, _ = manager.save_as_dataset(train_lf, valid_lf, test_lf)
     print("架构编译成功，可供调用。")
+
     # ======================== 模型在这里 ======================================== #
     class EasyModel(BaseModel):
         def __init__(self, manager: SchemaManager):
@@ -110,9 +162,8 @@ if __name__ == '__main__':
 
     model = EasyModel(manager).to(cfg.device)
     # ======================== 数据处理完成 准备trainer信息 ======================== #
-    ps_dataset = ParquetStreamDataset(train_path, manager.fields(), batch_size=cfg.batch_size, shuffle=True, shuffle_buffer_size=cfg.shuffle_buffer_size, drop_last=False) # 更少的读取
-    ps_valid = ParquetStreamDataset(valid_path, manager.fields(), batch_size=4096 * 2, shuffle=False, drop_last=False) # 不能被shuffle
-
+    ps_dataset = ParquetStreamDataset(train_path, manager, batch_size=cfg.batch_size, shuffle=True, shuffle_buffer_size=cfg.shuffle_buffer_size, drop_last=False) # 更少的读取
+    ps_valid = ParquetStreamDataset(valid_path, manager, batch_size=4096 * 2, shuffle=False, drop_last=False) # 不能被shuffle
     # ======================== Trainer 准备 =======================#
     overall_evaluator = LogDecorator(Evaluator("auc"), save_path=manager.work_dir / "logs.log", title=cfg.experiment_name)
     evaluator_manager = EvaluatorManager()

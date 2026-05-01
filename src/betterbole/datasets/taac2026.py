@@ -43,36 +43,80 @@ class _TAACDS(DatasetBase):
     BASE_DIR = DatasetBase.SYSTEM_DATA_DIR / "TAAC2026"
     WHOLE = BASE_DIR / "demo_1000.parquet"
 
-    user_sparse_cols = [
-        "user_int_feats_1", "user_int_feats_49", "user_int_feats_50",
-        "user_int_feats_51", "user_int_feats_55", "user_int_feats_58",
-        "user_int_feats_59", "user_int_feats_82", "user_int_feats_92",
-        "user_int_feats_93", "user_int_feats_94", "user_int_feats_95",
-        "user_int_feats_96", "user_int_feats_97", "user_int_feats_98",
-        "user_int_feats_99", "user_int_feats_100", "user_int_feats_101",
-        "user_int_feats_102", "user_int_feats_103", "user_int_feats_104",
-        "user_int_feats_105", "user_int_feats_106", "user_int_feats_107",
-        "user_int_feats_108", "user_int_feats_109"
-    ]
+    # ==========================================
+    # 1. 核心标识与目标 (Base & Target)
+    # ==========================================
+    # user_id 绝对不能进模型；label_type 需要减 1 变 0/1；time 用于算时间差
+    col_user_id = "user_id"
+    col_item_id = "item_id"
+    col_label = "label_type"
+    cols_time = ["label_time", "timestamp"]
 
-    core_id_cols = [
-        "user_id",
-        "item_id"
-    ]
-
+    # ==========================================
+    # 2. 物品侧静态特征 (Item Features)
+    # ==========================================
+    # 常规离散标量 (适合标准 Embedding)
     item_sparse_cols = [
-        "item_int_feats_9", "item_int_feats_13", "item_int_feats_81", "item_int_feats_83"
+        f"item_int_feats_{i}" for i in [5, 6, 7, 8, 9, 10, 12, 13, 16, 81, 83, 84, 85]
+    ]
+    # 多值离散特征 (大概率是Tags，适合 Mean/Sum Pooling)
+    item_varlen_sparse_cols = ["item_int_feats_11"]
+
+    # ==========================================
+    # 3. 用户侧上下文与画像 (User Features)
+    # ==========================================
+    # 3.1 单值离散特征 (适合标准 Embedding)
+    user_sparse_cols = [
+        f"user_int_feats_{i}" for i in [1, 3, 4, *range(48, 60), 82, 86, *range(92, 110)]
     ]
 
-    user_mid_sparse_cols = [
-        "user_int_feats_48", "user_int_feats_52", "user_int_feats_57", "user_int_feats_86"
+    # 3.2 多值离散特征 (近期Tag/行为集合，适合 Mean Pooling)
+    user_varlen_sparse_cols = [
+        f"user_int_feats_{i}" for i in [15, 60, 62, 63, 64, 65, 66, 80, 89, 90, 91]
     ]
 
-    item_mid_sparse_cols = [
-        "item_int_feats_5", "item_int_feats_10", "item_int_feats_84"
+    # 3.3 预训练稠密向量 (高阶画像，适合直接过 MLP 或 Dense 层降维)
+    # 注意：这里修正了你的笔误，它们在日志中是 user_dense_feats
+    user_dense_emb_cols = [
+        f"user_dense_feats_{i}" for i in [61, 87, 89, 90, 91]
     ]
 
-    all_sparse_cols = core_id_cols + user_sparse_cols + item_sparse_cols + user_mid_sparse_cols + item_mid_sparse_cols
+    # 3.4 历史累积统计值 (绝对数值极大，送入模型前必须做 Log(x+1) 平滑处理)
+    user_dense_stat_cols = [
+        f"user_dense_feats_{i}" for i in [62, 63, 64, 65, 66]
+    ]
+
+    # ==========================================
+    # 4. 终身行为序列跨域特征 (Cross-Domain Sequences)
+    # ==========================================
+    # 使用结构化字典管理，便于给 DIN / SIM 等 Attention 模块传参
+    seq_domains = {
+        "A": {
+            "time": "domain_a_seq_39",
+            "id": "domain_a_seq_38",
+            "attrs": [f"domain_a_seq_{i}" for i in range(40, 47)]
+        },
+        "B": {
+            "time": "domain_b_seq_67",
+            "id": "domain_b_seq_69",
+            "attrs": [f"domain_b_seq_{i}" for i in [68, *range(70, 80), 88]]
+        },
+        "C": {
+            "time": "domain_c_seq_27",
+            "id": "domain_c_seq_47",
+            "attrs": [f"domain_c_seq_{i}" for i in range(28, 38)]
+        },
+        "D": {
+            # D域无明显独立时间戳（或隐含对齐），长达3800，必须做 SIM 截断检索
+            "time": "domain_d_seq_26",
+            "id": "domain_d_seq_23",
+            "attrs": [f"domain_d_seq_{i}" for i in range(17, 27) if i not in (23, 26)]
+        }
+    }
+    high_null_cols = ["user_int_feats_101", "user_int_feats_100", "item_int_feats_83"]
+    low_cardinality_cols = [
+        f"user_int_feats_{i}" for i in [1, 49, 50, 58, 55, 59, 82, 93, *range(92, 110)]
+    ]
 
     @property
     def WHOLE_LF(self):
