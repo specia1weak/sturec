@@ -195,7 +195,7 @@ class EvaluatorDecorator:
     def collect(self, batch_users, batch_targets, batch_preds_1d=None, batch_scores_2d=None):
         self.evaluator.collect(batch_users, batch_targets, batch_preds_1d, batch_scores_2d)
     def summary(self, epoch=None, step=None):
-        self.evaluator.summary()
+        return self.evaluator.summary()
     def clear(self):
         self.evaluator.clear()
 
@@ -223,13 +223,7 @@ class LogDecorator(EvaluatorDecorator):
         # 1. 调用原 Evaluator 的 summary 获取干净的指标字典
         final_results = self.evaluator.summary()
 
-        # 2. 将 epoch 和 step 补充进返回给外层的字典里
-        if epoch is not None:
-            final_results['epoch'] = epoch
-        if step is not None:
-            final_results['step'] = step
-
-        # 3. 拦截并执行纯文本日志写入逻辑
+        # 2. 拦截并执行纯文本日志写入逻辑
         if self.save_path:
             current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -248,7 +242,7 @@ class LogDecorator(EvaluatorDecorator):
                     log_parts.append(f"Step: {step}")
 
                 # 遍历原始指标写入
-                for metric_name, value in self.evaluator.summary().items():
+                for metric_name, value in final_results.items():
                     if isinstance(value, float):
                         log_parts.append(f"{metric_name}: {value:.4f}")
                     else:

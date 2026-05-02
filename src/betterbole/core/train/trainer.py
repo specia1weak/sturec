@@ -1,3 +1,6 @@
+from pathlib import Path
+from typing import Optional, Union
+
 from betterbole.core.interaction import Interaction
 from betterbole.emb import SchemaManager
 from betterbole.experiment.param import ConfigBase
@@ -30,6 +33,7 @@ class BaseTrainer:
         self.evaluator = components.evaluator_manager
         self.timer = components.timer
         self.recorder = components.recorder
+        self.early_stepper = components.early_stepper
         self.cfg = cfg
 
         # 统计量
@@ -38,6 +42,30 @@ class BaseTrainer:
 
     def predict_step(self, batch_interaction):
         return self.model.predict(batch_interaction)
+
+    def save_checkpoint(self, tag: str = "", metrics: Optional[dict] = None) -> Union[Path, None]:
+        ckpt_dir = getattr(self.cfg, "ckpt_dir", "")
+        if not ckpt_dir:
+            return None
+
+        save_dir = Path(ckpt_dir)
+        save_dir.mkdir(parents=True, exist_ok=True)
+
+        safe_tag = f"_{tag}" if tag else ""
+        filename = f"epoch_{self.epoch:04d}_step_{self.global_step:08d}{safe_tag}.pt"
+        save_path = save_dir / filename
+
+        checkpoint = {
+            "epoch": self.epoch,
+            "global_step": self.global_step,
+            "model_state_dict": self.model.state_dict(),
+            "optimizer_state_dict": self.optimizer.state_dict(),
+            "metrics": metrics,
+            "experiment_name": self.cfg.experiment_name,
+            "dataset_name": self.cfg.dataset_name,
+        }
+        torch.save(checkpoint, save_path)
+        return save_path
 
     def default_train_step(self, batch, ctx: TrainContext):
         loss = self.model.calculate_loss(batch)
@@ -126,6 +154,16 @@ class BaseTrainer:
             self.train_epoch()
             metrics = self.evaluate_epoch()
             print(metrics)
+            if self.early_stepper:
+                is_best, should_stop = self.early_stepper.step(metrics, epoch=self.epoch)
+                if is_best:
+                    save_path = self.save_checkpoint(tag="best", metrics=metrics)
+                    print(f"[EarlyStop] best at epoch {self.epoch}")
+                    if save_path is not None:
+                        print(f"[Checkpoint] saved: {save_path}")
+                if should_stop:
+                    print(f"[EarlyStop] stop at epoch {self.epoch}")
+                    break
 
 
 

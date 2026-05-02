@@ -1,8 +1,9 @@
-from dataclasses import dataclass
-from typing import Any, Dict, Optional, Iterable
+from dataclasses import dataclass, field
+from typing import Any, Dict, Optional, Iterable, Union
 import torch
 
 from betterbole.core.interaction import Interaction
+from betterbole.core.train.early_stepper import EarlyStepper
 from betterbole.evaluate.manager import EvaluatorManager
 from betterbole.utils.recorder import ExplicitFeatureRecorder
 from betterbole.utils.time import CudaNamedTimer
@@ -33,9 +34,11 @@ class TrainerDataLoaders:
     valid: Iterable[Interaction]
     test: Optional[Iterable[Interaction]] = None  # 扩展性好，支持可选参数
 
+
 @dataclass
 class TrainerComponents:
     evaluator_manager: EvaluatorManager
 
-    recorder: ExplicitFeatureRecorder = ExplicitFeatureRecorder()
-    timer: CudaNamedTimer = CudaNamedTimer()
+    recorder: ExplicitFeatureRecorder = field(default_factory=ExplicitFeatureRecorder)
+    timer: CudaNamedTimer = field(default_factory=CudaNamedTimer)
+    early_stepper: Optional[EarlyStepper] = None

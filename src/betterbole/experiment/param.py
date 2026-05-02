@@ -11,6 +11,7 @@ class ConfigBase:
     seed: int = 2026
     device: str = "cpu"
     max_epochs: int = 100
+    ckpt_dir: str = ""
 
     extras: dict = field(default_factory=dict)
     def __getattr__(self, name):

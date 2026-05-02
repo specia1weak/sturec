@@ -43,7 +43,7 @@ class EvaluatorManager:
 
         self.registry[name] = {
             "evaluator": evaluator,
-            "filter_fn": filter_fn
+            "filter_fn": filter_fn,
         }
 
     def collect(self, batch_users, batch_targets, batch_inter, batch_preds_1d=None, batch_scores_2d=None, ):
@@ -78,28 +78,32 @@ class EvaluatorManager:
             # 4. 完美对齐调用底层的 Evaluator
             evaluator.collect(e_users, e_targets, e_preds_1d, e_scores_2d)
 
+    def _safe_summary(self, evaluator, epoch=None, step=None):
+        try:
+            return evaluator.summary(epoch=epoch, step=step)
+        except TypeError:
+            return evaluator.summary()
+
     def summary(self, epoch=None, step=None):
         """
-        收集所有指标，追加 epoch/step，并根据配置化的设定自动写文件
+        返回每个 evaluator 的完整指标：
+        {
+            "overall": {"auc": 0.73, "logloss": 0.41},
+            "domain_a": {"gauc": 0.69},
+        }
         """
-        # 1. 收集干净的底层指标
-        final_results = {}
+        summary_by_name = {}
+        log_metrics = {}
         for name, config in self.registry.items():
-            res = config["evaluator"].summary()
-            for k, v in res.items():
-                final_results[f"[{name}]_{k}"] = v
+            res = self._safe_summary(config["evaluator"], epoch=epoch, step=step)
+            summary_by_name[name] = dict(res)
+            for metric_name, metric_value in res.items():
+                log_metrics[f"{name}.{metric_name}"] = metric_value
 
-        # 2. 追加进度信息
-        if epoch is not None:
-            final_results['epoch'] = epoch
-        if step is not None:
-            final_results['step'] = step
-
-        # 3. 拦截并落盘
         if self.log_path:
-            self._write_polars_log(final_results, epoch, step)
+            self._write_polars_log(log_metrics, epoch, step)
 
-        return final_results
+        return summary_by_name
 
     def _write_polars_log(self, metrics_dict, epoch, step):
         """内部方法：专门负责将指标转成 Polars 字符串并追加到文件"""
