@@ -86,10 +86,6 @@ class EmbSetting(ABC):
     def is_sequence_setting(self) -> bool:
         return False
 
-    @property
-    def fill_empty_sequence_with_fallback(self) -> bool:
-        return self.use_oov
-
     def get_output_field_names(self) -> List[str]:
         return [self.field_name]
 

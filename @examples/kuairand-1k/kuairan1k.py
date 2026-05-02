@@ -7,7 +7,7 @@ import torch
 from betterbole.core.train.context import TrainerDataLoaders, TrainerComponents
 from betterbole.core.train.trainer import BaseTrainer
 from betterbole.data.dataset import ParquetStreamDataset
-from betterbole.emb.schema import SparseEmbSetting, SparseSetEmbSetting, MultiSparseSetting
+from betterbole.emb.schema import SparseEmbSetting, MultiSparseSetting
 from betterbole.emb import SchemaManager
 import polars as pl
 from betterbole.core.enum_type import FeatureSource
@@ -25,7 +25,7 @@ change_root_workdir()
 
 @dataclass
 class KuairandConfig(ConfigBase):
-    dataset_name: str = "kuairand"
+    dataset_name: str = "kuairand-raw"
     seed: int = 2026
     device: str = "cuda"
     max_epochs: int = 1

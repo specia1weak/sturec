@@ -6,7 +6,7 @@ import torch
 
 from betterbole.core.enum_type import FeatureSource
 from betterbole.data.dataset import ParquetStreamDataset, RawParquetStreamDataset
-from betterbole.data.split import RandomRatioConfig, TimeSplitConfig
+from betterbole.emb.split import RandomRatioConfig, TimeSplitConfig
 from betterbole.emb import SchemaManager
 from betterbole.emb.emblayer import OmniEmbLayer
 from betterbole.emb.schema import (

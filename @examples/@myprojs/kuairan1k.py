@@ -6,10 +6,14 @@ import torch
 
 from betterbole.core.train.context import TrainerDataLoaders, TrainerComponents
 from betterbole.core.train.trainer import BaseTrainer
-from betterbole.data.dataset import ParquetStreamDataset
-from betterbole.emb.schema import SparseEmbSetting, SparseSetEmbSetting
+from betterbole.data.dataset import ParquetStreamDataset, RawParquetStreamDataset
+from betterbole.emb.schema import SparseEmbSetting, MultiSparseSetting
 from betterbole.emb import SchemaManager
+
+import os
 import polars as pl
+
+
 from betterbole.core.enum_type import FeatureSource
 from betterbole.evaluate.evaluator import Evaluator
 
@@ -93,8 +97,8 @@ if __name__ == '__main__':
         SparseEmbSetting("music_type", FeatureSource.ITEM, cfg.side_emb, min_freq=10, use_oov=True),
         SparseEmbSetting("visible_status", FeatureSource.ITEM, cfg.side_emb, min_freq=10, use_oov=True),
 
-        SparseSetEmbSetting(
-            "tag", FeatureSource.ITEM,cfg.side_emb, max_len=5,
+        MultiSparseSetting(
+            "tag", FeatureSource.ITEM,cfg.side_emb, max_tag_len=5,
             is_string_format=True, separator=",", min_freq=10, use_oov=True
         ),
     ]
@@ -106,13 +110,11 @@ if __name__ == '__main__':
     user_lf = pl.scan_csv(KuaiRandDataset.USER_FEATURES)
     item_lf = pl.scan_csv(KuaiRandDataset.VIDEO_FEATURES)
     inter_lf = pl.scan_csv([KuaiRandDataset.STD_LOG_FORMER_DATA_P1, KuaiRandDataset.STD_LOG_FORMER_DATA_P2, KuaiRandDataset.RAND_LOG_FORMER_DATA])
-    whole_lf: pl.LazyFrame = inter_lf.join(item_lf, on="video_id", how="left").join(user_lf, on="user_id", how="left")
 
-    ## 排除部分场景数据
-    top_5_df = whole_lf.group_by("tab").len().sort("len", descending=True).head(5).select("tab").collect()
-    top_5_list = top_5_df.get_column("tab").to_list()
-    whole_lf = whole_lf.filter(pl.col("tab").is_in(top_5_list))
-    print(top_5_list)
+    top_5_tabs = inter_lf.group_by("tab").len().sort("len", descending=True).head(5).collect().get_column(
+        "tab").to_list()
+    inter_lf = inter_lf.filter(pl.col("tab").is_in(top_5_tabs))
+    whole_lf = inter_lf.join(item_lf, on="video_id", how="left").join(user_lf, on="user_id", how="left")
 
     ## 序列处理
     # extract_history_sequences(whole_lf, max_seq_len=20, user_col="user_id", time_col="time_ms", feature_mapping={
@@ -127,10 +129,19 @@ if __name__ == '__main__':
         parsed_date.dt.weekday().is_in([6, 7]).cast(pl.UInt8).alias("is_weekend"),
         (pl.col("hourmin").cast(pl.Int32) // 100).cast(pl.UInt8).alias("hour")
     )
-    whole_lf = manager.make_checkpoint(whole_lf, redo=False, sort_by="time_ms")
+
+    whole_lf = manager.make_checkpoint(whole_lf, redo=True, sort_by="time_ms")
     print("join表checkpoint完成")
+    time.sleep(4)
     ## 处理中
     train_raw = whole_lf.filter(pl.col("date") <= 20220506)
+    manager.fit(train_raw, low_memory=True)
+    train_lf = manager.transform(train_raw)
+    print(train_lf.explain(streaming=True))
+    train_lf.sink_parquet("./tmp.parquet")
+    exit()
+
+
     valid_raw = whole_lf.filter(pl.col("date") == 20220507)  # 仅用 20220507
     test_raw = whole_lf.filter(pl.col("date") == 20220508)  # 20220508 作 test
 
@@ -141,7 +152,8 @@ if __name__ == '__main__':
 
     print(train_lf.select("date").head(5).collect())
     print(valid_lf.select("date").head(5).collect())
-    train_path, valid_path, _ = manager.save_as_dataset(train_lf, valid_lf, test_lf)
+    train_path, valid_path, _ = manager.save_as_dataset(train_lf, valid_lf, test_lf, redo=True)
+
     print("架构编译成功，可供调用。")
     # ======================== 模型在这里 ======================================== #
     num_domains = manager.get_setting(manager.domain_field).vocab_size

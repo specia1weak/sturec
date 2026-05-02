@@ -159,7 +159,7 @@ class SequenceSetting(EmbSetting):
 
     def get_fit_seq_expr(self) -> pl.Expr:
         return self.truncate_seq_expr(
-            self.get_clean_expr(fill_empty_with_fallback=self.element_setting.fill_empty_sequence_with_fallback)
+            self.get_clean_expr(fill_empty_with_fallback=False)
         )
 
     def get_fit_exprs(self) -> List[pl.Expr]:
@@ -187,7 +187,7 @@ class SequenceSetting(EmbSetting):
 
     def get_transform_expr(self) -> List[pl.Expr]:
         expr = self.truncate_seq_expr(
-            self.get_clean_expr(fill_empty_with_fallback=self.element_setting.fill_empty_sequence_with_fallback)
+            self.get_clean_expr(fill_empty_with_fallback=False)
         )
         mapped_expr = expr.list.eval(self.element_setting.get_element_transform_expr()).alias(self.field_name)
         exprs: List[pl.Expr] = [mapped_expr, self.get_seq_len_expr()]

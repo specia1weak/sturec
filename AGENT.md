@@ -1,1 +1,2 @@
 在wsl不能使用项目venv，不要尝试直接运行项目代码，你顶多尝试使用python3看看编译，你要是敢用uv python我可是要杀了你
+你可以在根目录的python.sh 使用代理python这是windows原生方案，使用它非常被推荐

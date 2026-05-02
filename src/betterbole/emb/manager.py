@@ -3,13 +3,11 @@
 # ==========================================
 import gc
 import json
-import os
 from pathlib import Path
 from typing import Union, Literal, Optional
-import pyarrow.parquet as pq
 import polars as pl
 
-from betterbole.data.split import SplitConfig, SplitContext, create_split_strategy
+from betterbole.emb.split import SplitConfig, SplitContext, create_split_strategy
 from betterbole.emb.schema import EmbSetting, EmbType, MultiSparseSetting, SparseEmbSetting
 from betterbole.core.enum_type import FeatureSource
 from typing import Any, List, Iterable
@@ -127,6 +125,7 @@ class SchemaManager:
         """
         if self.meta_filepath.exists():
             self.load_schema()
+            print("[+] 所有特征已就绪，跳过 Fit 扫描。")
             return
         unfitted_settings = [s for s in self.settings if not s.is_fitted]
         if not unfitted_settings:
