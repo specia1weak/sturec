@@ -1,7 +1,7 @@
 import torch
 
 from betterbole.models.msr.backbone.base import MSRBackbone
-from betterbole.models.msr.backbone.common import build_mlp, to_dims
+from betterbole.models.utils.common import build_mlp, to_dims
 
 
 class SharedBottomBackbone(MSRBackbone):

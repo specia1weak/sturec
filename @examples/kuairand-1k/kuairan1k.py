@@ -4,6 +4,7 @@ from typing import Iterable
 
 import torch
 
+from betterbole.core.train import EarlyStopper
 from betterbole.core.train.context import TrainerDataLoaders, TrainerComponents
 from betterbole.core.train.trainer import BaseTrainer
 from betterbole.data.dataset import ParquetStreamDataset
@@ -28,19 +29,21 @@ class KuairandConfig(ConfigBase):
     dataset_name: str = "kuairand-raw"
     seed: int = 2026
     device: str = "cuda"
-    max_epochs: int = 1
+    max_epochs: int = 30
+    ckpt_dir: str = "" # 不保存ckpt
 
     batch_size: int = 4096
     id_emb: int = 32
     side_emb: int = 16
     shuffle_buffer_size: int = 2000000
 
-    model: str = "star"
-
+    model: str = "riple"
+    aux_loss_weight: float = 0.5
+    log_name: str = "test.log"
 
 pm = ParamManager(KuairandConfig)
-cfg: KuairandConfig = pm.build()
-cfg.experiment_name = "model"
+cfg: KuairandConfig = pm.build(experiment_name=KuairandConfig.model)
+
 print(cfg)
 time.sleep(2)
 
@@ -48,6 +51,14 @@ class KuairandTrainer(BaseTrainer):
     def __init__(self, model: BaseModel, optimizer: torch.optim.Optimizer, manager: SchemaManager,
                  loaders: TrainerDataLoaders, components: TrainerComponents, cfg: ConfigBase):
         super().__init__(model, optimizer, manager, loaders, components, cfg)
+
+    def train_epoch(self):
+        if self.epoch != 0:
+            self.model.omni_embedding.reinitialize_large_vocab_embeddings(1001, init_std=1e-2)
+            print("重初始化")
+        super().train_epoch()
+
+
 
 if __name__ == '__main__':
     from betterbole.utils.task_chain import auto_queue
@@ -141,21 +152,21 @@ if __name__ == '__main__':
 
     print(train_lf.select("date").head(5).collect())
     print(valid_lf.select("date").head(5).collect())
-    train_path, valid_path, _ = manager.save_as_dataset(train_lf, valid_lf, test_lf)
+    train_path, valid_path, test_path = manager.save_as_dataset(train_lf, valid_lf, test_lf)
     print("架构编译成功，可供调用。")
     # ======================== 模型在这里 ======================================== #
     num_domains = manager.get_setting(manager.domain_field).vocab_size
-    model = build_model(manager, num_domains, cfg.model, embed_dim=16)
+    model = build_model(manager, num_domains, cfg.model, embed_dim=16, aux_loss_weight=cfg.aux_loss_weight)
     # ======================== 数据处理完成 准备trainer信息 ======================== #
     ps_dataset = ParquetStreamDataset(train_path, manager, batch_size=cfg.batch_size, shuffle=True, shuffle_buffer_size=cfg.shuffle_buffer_size) # 更少的读取
-    ps_valid = ParquetStreamDataset(valid_path, manager, batch_size=4096 * 2, shuffle=False) # 不能被shuffle
+    ps_valid = ParquetStreamDataset(test_path, manager, batch_size=4096 * 2, shuffle=False) # 不能被shuffle
     # ======================== Trainer 准备 =======================#
-    evaluator_manager = EvaluatorManager(log_path=WORKDIR / "logs.log", title=cfg.experiment_name)
+    evaluator_manager = EvaluatorManager(log_path=WORKDIR / cfg.log_name, title=cfg.experiment_name)
     overall_evaluator = Evaluator("auc")
     evaluator_manager.register("overall", overall_evaluator,)
 
-    domain_evluators = [Evaluator("auc") for _ in range(num_domains)]
-    for domain, domain_evaluator in enumerate(domain_evluators):
+    domain_evaluators = [Evaluator("auc") for _ in range(num_domains)]
+    for domain, domain_evaluator in enumerate(domain_evaluators):
         evaluator_manager.register(
             f"domain{domain}",
             domain_evaluator,
@@ -169,6 +180,7 @@ if __name__ == '__main__':
             train=ps_dataset, valid=ps_valid
         ), TrainerComponents(
             evaluator_manager=evaluator_manager,
+            early_stepper=EarlyStopper()
         ), cfg
     )
 

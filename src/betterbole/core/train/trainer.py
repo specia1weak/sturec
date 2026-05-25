@@ -156,9 +156,11 @@ class BaseTrainer:
             print(metrics)
             if self.early_stepper:
                 is_best, should_stop = self.early_stepper.step(metrics, epoch=self.epoch)
+                status_text = self.early_stepper.status_text()
+                if status_text:
+                    print(status_text)
                 if is_best:
                     save_path = self.save_checkpoint(tag="best", metrics=metrics)
-                    print(f"[EarlyStop] best at epoch {self.epoch}")
                     if save_path is not None:
                         print(f"[Checkpoint] saved: {save_path}")
                 if should_stop:

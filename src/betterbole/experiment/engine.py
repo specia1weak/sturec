@@ -5,10 +5,15 @@ import sys
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from typing import Dict, List, Any
-
+"""
+原理：只需要指定目标python文件路径就行，只要你使用了ParamManager这套，命令行传参都是第一优先级
+"""
 
 class GridSearchEngine:
     def __init__(self, script_path: str,):
+        """
+        :param script_path: 运行python的cwd下面找script_path相对路径
+        """
         self.script_path = script_path
         self.base_python = sys.executable
 

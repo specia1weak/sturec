@@ -3,7 +3,7 @@ from typing import Any, Dict, Optional, Iterable, Union
 import torch
 
 from betterbole.core.interaction import Interaction
-from betterbole.core.train.early_stepper import EarlyStepper
+from betterbole.core.train.early_stepper import EarlyStopper
 from betterbole.evaluate.manager import EvaluatorManager
 from betterbole.utils.recorder import ExplicitFeatureRecorder
 from betterbole.utils.time import CudaNamedTimer
@@ -41,4 +41,4 @@ class TrainerComponents:
 
     recorder: ExplicitFeatureRecorder = field(default_factory=ExplicitFeatureRecorder)
     timer: CudaNamedTimer = field(default_factory=CudaNamedTimer)
-    early_stepper: Optional[EarlyStepper] = None
+    early_stepper: Optional[EarlyStopper] = None

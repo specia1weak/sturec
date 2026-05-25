@@ -3,7 +3,7 @@ from typing import Iterable
 import torch
 from torch import nn
 
-from betterbole.models.msr.backbone.common import to_dims
+from betterbole.models.utils.common import to_dims
 from betterbole.models.utils.container import MultiScenarioContainer
 from betterbole.models.utils.general import MLP
 

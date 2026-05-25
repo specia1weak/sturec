@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from betterbole.models.msr.backbone.base import MSRBackbone
-from betterbole.models.msr.backbone.common import to_dims, default_dims
+from betterbole.models.utils.common import to_dims, default_dims
 from betterbole.models.utils.container import domain_select
 from betterbole.models.utils.tests import dummy_input_multi_domain
 

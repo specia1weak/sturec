@@ -4,13 +4,14 @@ from betterbole.emb import SchemaManager
 from betterbole.models.msr.automtl import AutoMTLModel
 from betterbole.models.msr.base import MSRModel
 from betterbole.models.msr.epnet import EPNetModel
+from betterbole.models.msr.hamur import HAMURModel
 from betterbole.models.msr.hierrec import HierRec
 from betterbole.models.msr.m3oe import M3oEModel, M3oEVersion1Model, M3oEVersion2Model
 from betterbole.models.msr.m2m import M2MModel
 from betterbole.models.msr.mmoe import MMoEModel
 from betterbole.models.msr.ppnet import PPNetModel
 from betterbole.models.msr.ple import PLEModel
-from betterbole.models.msr.sharedbottom import SharedBottomModel
+from betterbole.models.msr.sharedbottom import SharedBottomModel, RIPLEModel
 from betterbole.models.msr.star import STARModel
 
 
@@ -27,6 +28,8 @@ MODEL_REGISTRY: Dict[str, Type[MSRModel]] = {
     "epnet": EPNetModel,
     "hierrec": HierRec,
     "automtl": AutoMTLModel,
+    "riple": RIPLEModel,
+    "hamur": HAMURModel,
 }
 
 
@@ -48,7 +51,6 @@ def build_model(
 
 
 __all__ = [
-    "MSRModel",
     "HierRec",
     "SharedBottomModel",
     "MMoEModel",
@@ -57,10 +59,10 @@ __all__ = [
     "M3oEModel",
     "M3oEVersion1Model",
     "M3oEVersion2Model",
+    "RIPLEModel",
     "M2MModel",
     "PPNetModel",
     "EPNetModel",
     "AutoMTLModel",
-    "MODEL_REGISTRY",
-    "build_model",
+    "HAMURModel",
 ]

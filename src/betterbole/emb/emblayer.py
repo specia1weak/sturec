@@ -1,4 +1,4 @@
-from typing import Iterable, List, Dict, Union, Literal, TYPE_CHECKING
+from typing import Iterable, List, Dict, Union, Literal, TYPE_CHECKING, Optional, Any
 
 import numpy as np
 import pandas as pd
@@ -24,7 +24,7 @@ SPLIT_METHODS = Literal["source", "name", "none", None]
 
 
 class RecEmbedding(nn.Module):
-    def __init__(self, num_embeddings, embedding_dim, padding_idx=0, init_method='normal', init_std=1e-4):
+    def __init__(self, num_embeddings, embedding_dim, padding_idx=0, init_method='normal', init_std=1e-3):
         super(RecEmbedding, self).__init__()
         self.embedding = nn.Embedding(
             num_embeddings=num_embeddings,
@@ -45,6 +45,13 @@ class RecEmbedding(nn.Module):
         if self.embedding.padding_idx is not None:
             with torch.no_grad():
                 self.embedding.weight[self.embedding.padding_idx].fill_(0)
+
+    def reinitialize(self, init_method: Optional[str] = None, init_std: Optional[float] = None):
+        if init_method is not None:
+            self.init_method = init_method
+        if init_std is not None:
+            self.init_std = init_std
+        self.reset_parameters()
 
     def forward(self, x):
         return self.embedding(x)
@@ -459,6 +466,58 @@ class OmniEmbLayer(nn.Module):
             # C. 自动收集带有组名标签的序列特征
             if hasattr(setting, 'group_name') and setting.group_name:
                 self.group2fields.setdefault(setting.group_name, []).append(setting.field_name)
+
+    def reinitialize_large_vocab_embeddings(
+            self,
+            vocab_size_threshold: int,
+            *,
+            init_method: Optional[str] = None,
+            init_std: Optional[float] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Reinitialize embedding modules whose linked setting vocab size exceeds the threshold.
+
+        Notes:
+        - This method is opt-in only. Nothing in the default training flow calls it.
+        - When multiple settings share one embedding table, the table is reinitialized at most once.
+        - The threshold compares `setting.vocab_size`, not `num_embeddings`, so padding/OOV slots
+          do not affect the trigger.
+        """
+        vocab_size_threshold = int(vocab_size_threshold)
+        embedding_meta: Dict[str, Dict[str, Any]] = {}
+
+        for setting in self.settings:
+            if not setting.requires_embedding_module:
+                continue
+
+            emb_field_name = setting.embedding_field_name
+            meta = embedding_meta.setdefault(
+                emb_field_name,
+                {
+                    "embedding_field_name": emb_field_name,
+                    "field_names": [],
+                    "vocab_size": 0,
+                    "num_embeddings": int(setting.num_embeddings),
+                },
+            )
+            if setting.field_name not in meta["field_names"]:
+                meta["field_names"].append(setting.field_name)
+            meta["vocab_size"] = max(int(meta["vocab_size"]), int(setting.vocab_size))
+            meta["num_embeddings"] = max(int(meta["num_embeddings"]), int(setting.num_embeddings))
+
+        reinitialized = []
+        for emb_field_name, meta in embedding_meta.items():
+            if meta["vocab_size"] <= vocab_size_threshold:
+                continue
+
+            if emb_field_name not in self.emb_modules:
+                continue
+            emb_module = self.emb_modules[emb_field_name]
+
+            emb_module.reinitialize(init_method=init_method, init_std=init_std)
+            reinitialized.append(meta)
+
+        return sorted(reinitialized, key=lambda item: item["vocab_size"], reverse=True)
 
 
     def forward(

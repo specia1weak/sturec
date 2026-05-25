@@ -2,7 +2,7 @@ import torch
 from torch import nn
 
 from betterbole.models.msr.backbone.base import MSRBackbone
-from betterbole.models.msr.backbone.common import to_dims
+from betterbole.models.utils.common import to_dims
 from betterbole.models.utils.container import domain_select
 """
 使用M3oE时可以将 balance_factor 参数单独低频更新，其他权重正常更新。

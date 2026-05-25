@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import Optional, Protocol, runtime_checkable
 
 @dataclass
-class EarlyStepper:
+class EarlyStopper:
     patience: int = 5
     min_delta: float = 0.0
     preferred_evaluators: tuple[str, ...] = ("overall", "all")
@@ -28,6 +28,10 @@ class EarlyStepper:
         self.best_evaluator_name: Optional[str] = None
         self.best_epoch: Optional[int] = None
         self.bad_epoch_count: int = 0
+        self.last_metric_value: Optional[float] = None
+        self.last_metric_name: Optional[str] = None
+        self.last_evaluator_name: Optional[str] = None
+        self.last_status_message: Optional[str] = None
 
     def _ordered_evaluator_names(self, summary_dict: dict[str, dict[str, float]]) -> list[str]:
         names = list(summary_dict.keys())
@@ -59,6 +63,12 @@ class EarlyStepper:
             return "min"
         return "max"
 
+    @staticmethod
+    def _format_metric_value(metric_value: Optional[float]) -> str:
+        if metric_value is None:
+            return "None"
+        return f"{metric_value:.6f}"
+
     def step(
         self,
         summary_dict: Optional[dict[str, dict[str, float]]],
@@ -73,6 +83,9 @@ class EarlyStepper:
 
         evaluator_name, metric_name, metric_value = early_metric
         mode = self._metric_mode(metric_name)
+        self.last_evaluator_name = evaluator_name
+        self.last_metric_name = metric_name
+        self.last_metric_value = metric_value
 
         if self.best_metric_value is None:
             improved = True
@@ -87,7 +100,24 @@ class EarlyStepper:
             self.best_evaluator_name = evaluator_name
             self.best_epoch = epoch
             self.bad_epoch_count = 0
+            self.last_status_message = (
+                f"[EarlyStop] best {evaluator_name}/{metric_name}="
+                f"{self._format_metric_value(metric_value)} at epoch {epoch}, patience 0/{self.patience}"
+            )
             return True, False
 
         self.bad_epoch_count += 1
+        self.last_status_message = (
+            f"[EarlyStop] wait {self.bad_epoch_count}/{self.patience}, "
+            f"current {evaluator_name}/{metric_name}={self._format_metric_value(metric_value)}, "
+            f"best {self.best_evaluator_name}/{self.best_metric_name}="
+            f"{self._format_metric_value(self.best_metric_value)} at epoch {self.best_epoch}"
+        )
         return False, self.bad_epoch_count >= self.patience
+
+    def status_text(self) -> Optional[str]:
+        return self.last_status_message
+
+
+# Backward-compatible alias for existing imports/usages.
+EarlyStepper = EarlyStopper
