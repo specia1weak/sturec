@@ -21,6 +21,16 @@ class BaseModel(nn.Module):
         self.manager: SchemaManager = manager
         self.omni_embedding: OmniEmbLayer = OmniEmbLayer(manager=manager)
 
+    def apply_xavier_initialization(self) -> None:
+        """Optionally reset linear layers to Xavier normal with zero bias."""
+        def _reset(module: nn.Module) -> None:
+            if isinstance(module, nn.Linear):
+                nn.init.xavier_normal_(module.weight)
+                if module.bias is not None:
+                    module.bias.data.zero_()
+
+        self.apply(_reset)
+
     def calculate_loss(self, interaction: Interaction):
         raise NotImplementedError
 

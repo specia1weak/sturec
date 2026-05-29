@@ -70,7 +70,7 @@ if __name__ == '__main__':
     settings_list = [
         user_setting,
         item_setting,
-        SparseEmbSetting("tab", FeatureSource.INTERACTION, cfg.side_emb, padding_zero=False, use_oov=False),
+        SparseEmbSetting("tab", FeatureSource.INTERACTION, cfg.side_emb, padding_zero=False, use_oov=False, use_null=False),
 
         SparseEmbSetting("user_active_degree", FeatureSource.USER, cfg.side_emb, min_freq=10, use_oov=True),
         SparseEmbSetting("is_live_streamer", FeatureSource.USER, cfg.side_emb, min_freq=10, use_oov=True),

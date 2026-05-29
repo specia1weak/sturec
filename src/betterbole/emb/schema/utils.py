@@ -4,6 +4,10 @@ import polars as pl
 import torch
 
 
+# Historical compatibility placeholder.
+# We no longer use this in the main feature pipeline:
+# - sparse nulls are mapped directly to a reserved null index
+# - sequence empties are kept empty and padded by the dataset formatter
 NULL_FALLBACK = "NULL_FALLBACK"
 
 

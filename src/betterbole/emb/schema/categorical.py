@@ -13,6 +13,7 @@ from .utils import NULL_FALLBACK, map_list_to_indices, mean_pooling
 
 class BaseCategoricalSetting(EmbSetting):
     """离散特征基类：统一管理词表与 OOV 逻辑。"""
+    NULL_TOKEN = "__NULL__"
 
     def __init__(
         self,
@@ -20,22 +21,44 @@ class BaseCategoricalSetting(EmbSetting):
         embedding_dim: int,
         source: FeatureSource,
         padding_zero: bool = True,
+        use_null: bool = True,
         use_oov: bool = True,
         min_freq: int = 1,
     ):
         super().__init__(field_name, embedding_dim, source, padding_zero, use_oov)
+        if use_null and not padding_zero:
+            raise ValueError("use_null=True requires padding_zero=True for sparse categorical features.")
         self.min_freq = min_freq
+        self.use_null = use_null
         self.vocab = {}
+        self.null_idx = -1
         self.oov_idx = -1
 
     def _build_vocab_indices(self, valid_vals: List[str]):
         start_idx = 1 if self.padding_zero else 0
         self.vocab = {str(val): idx + start_idx for idx, val in enumerate(valid_vals)}
+        next_idx = len(self.vocab) + start_idx
+        if self.use_null:
+            self.null_idx = next_idx
+            next_idx += 1
+        else:
+            self.null_idx = 0 if self.padding_zero else -1
         if self.use_oov:
-            self.oov_idx = len(self.vocab) + start_idx
+            self.oov_idx = next_idx
         else:
             self.oov_idx = 0 if self.padding_zero else -1
         self.is_fitted = True
+
+    @property
+    def num_embeddings(self) -> int:
+        if not self.is_fitted:
+            return -1
+        return (
+            self.vocab_size
+            + int(self.padding_zero)
+            + int(self.use_null)
+            + int(self.use_oov)
+        )
 
 
 class SparseEmbSetting(BaseCategoricalSetting):
@@ -47,10 +70,23 @@ class SparseEmbSetting(BaseCategoricalSetting):
         source: FeatureSource,
         embedding_dim: int = 16,
         padding_zero: bool = True,
+        use_null: bool = True,
+        fill_null: str = "null",
         min_freq: int = 1,
         use_oov: bool = True,
     ):
-        super().__init__(field_name, embedding_dim, source, padding_zero, use_oov, min_freq=min_freq)
+        super().__init__(
+            field_name,
+            embedding_dim,
+            source,
+            padding_zero,
+            use_null=use_null,
+            use_oov=use_oov,
+            min_freq=min_freq,
+        )
+        if fill_null not in {"null", "oov", "zero", None}:
+            raise ValueError("fill_null must be one of {'null', 'oov', 'zero', None}")
+        self.fill_null = fill_null
 
     def get_fit_exprs(self) -> List[pl.Expr]:
         return [
@@ -84,12 +120,17 @@ class SparseEmbSetting(BaseCategoricalSetting):
     def get_element_transform_expr(self, expr: Optional[pl.Expr] = None) -> pl.Expr:
         expr = expr if expr is not None else pl.element()
         replace_kwargs = {"default": pl.lit(self.oov_idx, dtype=pl.UInt32)} if self.oov_idx >= 0 else {}
-        return (
-            expr.cast(pl.Utf8)
-            .fill_null(NULL_FALLBACK)
-            .replace_strict(self.vocab, **replace_kwargs)
-            .cast(pl.UInt32)
-        )
+        mapped_expr = expr.cast(pl.Utf8).replace_strict(self.vocab, **replace_kwargs)
+        if not self.use_null:
+            return mapped_expr.cast(pl.UInt32)
+
+        if self.fill_null == "zero":
+            null_expr = pl.lit(0, dtype=pl.UInt32)
+        elif self.fill_null == "oov":
+            null_expr = pl.lit(self.oov_idx, dtype=pl.UInt32)
+        else:
+            null_expr = pl.lit(self.null_idx, dtype=pl.UInt32)
+        return pl.when(expr.is_null()).then(null_expr).otherwise(mapped_expr).cast(pl.UInt32)
 
     def get_transform_expr(self) -> pl.Expr:
         return self.get_element_transform_expr(pl.col(self.field_name)).alias(self.field_name)
@@ -102,11 +143,17 @@ class SparseEmbSetting(BaseCategoricalSetting):
     def to_dict(self) -> Dict[str, Any]:
         data = super().to_dict()
         data["min_freq"] = self.min_freq
+        data["use_null"] = self.use_null
+        data["null_idx"] = self.null_idx
+        data["fill_null"] = self.fill_null
         return data
 
     def load_state(self, state_dict: Dict[str, Any]):
         super().load_state(state_dict)
         self.min_freq = state_dict.get("min_freq", 1)
+        self.use_null = state_dict.get("use_null", self.use_null)
+        self.null_idx = state_dict.get("null_idx", self.null_idx)
+        self.fill_null = state_dict.get("fill_null", self.fill_null)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "SparseEmbSetting":
@@ -115,6 +162,8 @@ class SparseEmbSetting(BaseCategoricalSetting):
             source=FeatureSource[data["feature_source"]],
             embedding_dim=data["embedding_size"],
             padding_zero=data.get("padding_zero", True),
+            use_null=data.get("use_null", True),
+            fill_null=data.get("fill_null", "null"),
             min_freq=data.get("min_freq", 1),
             use_oov=data.get("use_oov", True),
         )
@@ -231,7 +280,15 @@ class MultiSparseSetting(BaseCategoricalSetting):
         use_oov: bool = True,
         agg: str = "sum",
     ):
-        super().__init__(field_name, embedding_dim, source, padding_zero, use_oov, min_freq=min_freq)
+        super().__init__(
+            field_name,
+            embedding_dim,
+            source,
+            padding_zero,
+            use_null=False,
+            use_oov=use_oov,
+            min_freq=min_freq,
+        )
         self.max_tag_len = max_tag_len
         self.is_string_format = is_string_format
         self.separator = separator
@@ -369,3 +426,76 @@ class MultiSparseSetting(BaseCategoricalSetting):
         if self.agg == "mean":
             emb = mean_pooling(emb, idx_tensor, self.padding_zero)
         return emb
+
+
+if __name__ == "__main__":
+    source = FeatureSource.USER
+
+    sparse_null = SparseEmbSetting(
+        "demo",
+        source=source,
+        padding_zero=True,
+        use_null=True,
+        fill_null="null",
+        use_oov=True,
+    )
+    sparse_null._build_vocab_indices(["a", "b"])
+    expr = sparse_null.get_transform_expr()
+    df = pl.DataFrame({"demo": [None, "a", "zzz"]}).lazy().with_columns(expr).collect()
+    assert df["demo"].to_list() == [sparse_null.null_idx, 1, sparse_null.oov_idx]
+    assert sparse_null.num_embeddings == 5
+
+    sparse_zero = SparseEmbSetting(
+        "demo",
+        source=source,
+        padding_zero=True,
+        use_null=True,
+        fill_null="zero",
+        use_oov=True,
+    )
+    sparse_zero._build_vocab_indices(["a", "b"])
+    expr = sparse_zero.get_transform_expr()
+    df = pl.DataFrame({"demo": [None, "a", "zzz"]}).lazy().with_columns(expr).collect()
+    assert df["demo"].to_list() == [0, 1, sparse_zero.oov_idx]
+    assert sparse_zero.num_embeddings == 5
+
+    sparse_oov = SparseEmbSetting(
+        "demo",
+        source=source,
+        padding_zero=True,
+        use_null=True,
+        fill_null="oov",
+        use_oov=True,
+    )
+    sparse_oov._build_vocab_indices(["a", "b"])
+    expr = sparse_oov.get_transform_expr()
+    df = pl.DataFrame({"demo": [None, "a", "zzz"]}).lazy().with_columns(expr).collect()
+    assert df["demo"].to_list() == [sparse_oov.oov_idx, 1, sparse_oov.oov_idx]
+    assert sparse_oov.num_embeddings == 5
+
+    sparse_strict = SparseEmbSetting(
+        "demo",
+        source=source,
+        padding_zero=False,
+        use_null=False,
+        use_oov=False,
+    )
+    sparse_strict._build_vocab_indices(["1", "2"])
+    expr = sparse_strict.get_transform_expr()
+    df = pl.DataFrame({"demo": ["1", "2"]}).lazy().with_columns(expr).collect()
+    assert df["demo"].to_list() == [0, 1]
+
+    multi = MultiSparseSetting(
+        "tags",
+        source=source,
+        padding_zero=True,
+        use_oov=True,
+        is_string_format=True,
+        separator=",",
+    )
+    multi._build_vocab_indices(["a", "b"])
+    expr = multi.get_transform_expr()
+    df = pl.DataFrame({"tags": [None, "", "a,b", "zzz"]}).lazy().with_columns(expr).collect()
+    assert df["tags"].to_list() == [[], [], [1, 2], [multi.oov_idx]]
+
+    print("categorical.py self-check passed")

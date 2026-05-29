@@ -184,7 +184,7 @@ class CrocodileV1Model(MSRModel):
             manager: SchemaManager,
             num_domains: int,
             num_experts: int = None,
-            expert_hidden_units: Iterable[int] = (256, 128, 64),
+            expert_hidden_units: Iterable[int] = (512, 256, 128),
             gate_hidden_units: Iterable[int] = (128, 64),
             tower_hidden_units: Iterable[int] = (128, 64),
             hidden_activations: str = "relu",
@@ -192,7 +192,7 @@ class CrocodileV1Model(MSRModel):
             batch_norm: bool = False,
             embedding_regularizer: float = 0.0,
             net_regularizer: float = 1e-6,
-            disentangled_weight: float = 1e-3,
+            disentangled_weight: float = 1e-4,
             prior_idx: Iterable[str] = None,
     ):
         super().__init__(manager, num_domains)
@@ -238,6 +238,7 @@ class CrocodileV1Model(MSRModel):
             )
             for _ in range(self.num_domains)
         ])
+        self.apply_xavier_initialization()
 
     def _resolve_prior_idx(self, prior_idx) -> tuple[str, ...]:
         if prior_idx is not None:
