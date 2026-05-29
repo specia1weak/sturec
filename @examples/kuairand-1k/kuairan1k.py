@@ -26,7 +26,7 @@ change_root_workdir()
 
 @dataclass
 class KuairandConfig(ConfigBase):
-    dataset_name: str = "kuairand-raw"
+    dataset_name: str = "kuairand-rand"
     seed: int = 2026
     device: str = "cuda"
     max_epochs: int = 1
@@ -110,8 +110,8 @@ if __name__ == '__main__':
             is_string_format=True, separator=",", min_freq=10, use_oov=True
         ),
     ]
-    from betterbole.experiment import preset_workdir
-    WORKDIR = preset_workdir(cfg.dataset_name)
+    from betterbole.experiment import WORKSPACE
+    WORKDIR = WORKSPACE / cfg.dataset_name
     manager = SchemaManager(settings_list, WORKDIR, time_field="time_ms", label_fields="is_click", domain_fields="tab")
     from betterbole.datasets.kuairand import KuaiRandDataset
 
@@ -134,12 +134,17 @@ if __name__ == '__main__':
 
     ## 增加新特征
     parsed_date = pl.col("date").cast(pl.Utf8).str.to_date("%Y%m%d", strict=False)
-    whole_lf = whole_lf.with_columns(
-        parsed_date.dt.weekday().alias("day_of_week"),
-        parsed_date.dt.weekday().is_in([6, 7]).cast(pl.UInt8).alias("is_weekend"),
-        (pl.col("hourmin").cast(pl.Int32) // 100).cast(pl.UInt8).alias("hour")
-    )
-    whole_lf = manager.make_checkpoint(whole_lf, redo=False, sort_by="time_ms")
+    # whole_lf = whole_lf.with_columns(
+    #     parsed_date.dt.weekday().alias("day_of_week"),
+    #     parsed_date.dt.weekday().is_in([6, 7]).cast(pl.UInt8).alias("is_weekend"),
+    #     (pl.col("hourmin").cast(pl.Int32) // 100).cast(pl.UInt8).alias("hour")
+    # )
+
+    # 用一个固定伪随机排序键做一次全局打乱，随后落盘时不保留该列。
+    whole_lf = whole_lf.with_row_index("__row_idx").with_columns(
+        (pl.col("__row_idx") * 1103515245 + 12345).cast(pl.UInt64).alias("__rand_order")
+    ).drop("__row_idx")
+    whole_lf = manager.make_checkpoint(whole_lf, redo=False, sort_by="__rand_order").drop("__rand_order")
     print("join表checkpoint完成")
     ## 处理中
     train_raw = whole_lf.filter(pl.col("date") <= 20220506)
@@ -160,8 +165,8 @@ if __name__ == '__main__':
     num_domains = 5
     model = build_model(manager, num_domains, cfg.model, aux_loss_weight=cfg.aux_loss_weight)
     # ======================== 数据处理完成 准备trainer信息 ======================== #
-    ps_dataset = ParquetStreamDataset(train_path, manager, batch_size=cfg.batch_size, shuffle=True, shuffle_buffer_size=cfg.shuffle_buffer_size, drop_last=False) # 更少的读取
-    ps_valid = ParquetStreamDataset(test_path, manager, batch_size=4096 * 2, shuffle=False) # 不能被shuffle
+    ps_dataset = ParquetStreamDataset(train_path, manager, batch_size=cfg.batch_size, shuffle=False, drop_last=False) # 文件已全局打乱
+    ps_valid = ParquetStreamDataset(test_path, manager, batch_size=4096 * 2, shuffle=False, drop_last=False) # 不能被shuffle
     # ======================== Trainer 准备 =======================#
     evaluator_manager = EvaluatorManager(log_path=WORKDIR / cfg.log_name, title=cfg.experiment_name)
     overall_evaluator = Evaluator("auc")
@@ -175,7 +180,7 @@ if __name__ == '__main__':
             filter_fn=DomainFilter(manager.domain_field, domain),
         )
 
-    params = split_params_by_decay(model.named_parameters(), weight_decay=1e-5, no_decay_keywords=["embedding"])
+    params = split_params_by_decay(model.named_parameters(), weight_decay=0, no_decay_keywords=["embedding"])
     optimizer = torch.optim.Adam(params, lr=1e-3)
     trainer = KuairandTrainer(
         model, optimizer, manager, TrainerDataLoaders(

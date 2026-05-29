@@ -1,6 +1,7 @@
 # === 1. 操作系统与 IDE 无关文件 ===
 .DS_Store
 Thumbs.db
+.kilo/
 .vscode/
 .idea/
 .claude/

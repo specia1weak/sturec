@@ -24,7 +24,7 @@ SPLIT_METHODS = Literal["source", "name", "none", None]
 
 
 class RecEmbedding(nn.Module):
-    def __init__(self, num_embeddings, embedding_dim, padding_idx=0, init_method='normal', init_std=1e-3):
+    def __init__(self, num_embeddings, embedding_dim, padding_idx=0, init_method='normal', init_std=1e-4):
         super(RecEmbedding, self).__init__()
         self.embedding = nn.Embedding(
             num_embeddings=num_embeddings,

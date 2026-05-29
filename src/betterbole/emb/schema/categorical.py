@@ -301,14 +301,14 @@ class MultiSparseSetting(BaseCategoricalSetting):
 
     def get_transform_expr(self) -> pl.Expr:
         expr = self._truncate_tag_expr(
-            self._clean_list_expr(pl.col(self.field_name), fill_empty_with_fallback=self.use_oov)
+            self._clean_list_expr(pl.col(self.field_name), fill_empty_with_fallback=False)
         )
         return map_list_to_indices(expr, self.vocab, self.oov_idx).alias(self.field_name)
 
     def get_element_transform_expr(self, expr: Optional[pl.Expr] = None) -> pl.Expr:
         expr = expr if expr is not None else pl.element()
         cleaned = self._truncate_tag_expr(
-            self._clean_list_expr(expr, fill_empty_with_fallback=self.use_oov)
+            self._clean_list_expr(expr, fill_empty_with_fallback=False)
         )
         return map_list_to_indices(cleaned, self.vocab, self.oov_idx)
 
