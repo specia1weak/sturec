@@ -1,5 +1,5 @@
 from collections import Counter
-from typing import Literal
+from typing import Literal, Dict, Tuple, Union
 
 import torch
 import numpy as np
@@ -282,7 +282,43 @@ class PolarsUISampler(AbstractSampler):
             raise ValueError(f"不支持的输出格式: {format}")
 
 
+def extract_history_dict(
+        *lfs: pl.LazyFrame,
+        user_col: str = "user_id",
+        item_col: str = "item_id",
+        merge: bool = False
+) -> Union[Dict[int, list], Tuple[Dict[int, list], ...]]:
+    """
+    极速从任意数量的 Polars LazyFrame 中提取 User-History 字典。
 
+    Args:
+        *lfs: 任意数量的 pl.LazyFrame (例如 train_lf, valid_lf, test_lf)
+        user_col: 用户列的列名
+        item_col: 物品列的列名
+        merge: 是否将所有输入的 LazyFrame 合并成一个全局静态大字典。
+               True -> 返回单个 Dict
+               False -> 返回 Tuple[Dict, ...], 与输入的 lf 数量一一对应
+    Returns:
+        history_dict 或者 (history_dict1, history_dict2, ...)
+    """
+    # 核心聚合算子：在 Lazy 模式下定义图计算逻辑
+    def _build_dict_from_lf(lf: pl.LazyFrame) -> Dict:
+        lf_ui = lf.select([user_col, item_col])
+        df_agg = lf_ui.group_by(user_col, maintain_order=False).agg(
+            pl.col(item_col)
+        ).collect()  # 这里才真正触发计算，返回 DataFrame
+        return dict(zip(df_agg[user_col].to_list(), df_agg[item_col].to_list()))
+
+    # ================= 分支 1：合并计算 =================
+    if merge:
+        if not lfs:
+            return {}
+        selected_lfs = [lf.select([user_col, item_col]) for lf in lfs]
+        merged_lf = pl.concat(selected_lfs)
+        return _build_dict_from_lf(merged_lf)
+    else:
+        # 直接利用列表推导式，依次处理返回 Tuple
+        return tuple(_build_dict_from_lf(lf) for lf in lfs)
 import time
 
 # 测试代码

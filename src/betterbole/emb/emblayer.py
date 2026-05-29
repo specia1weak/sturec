@@ -400,7 +400,7 @@ class OmniEmbLayer(nn.Module):
     内部纳管所有 settings。forward 时可通过 target_sources 动态指定范围。
     彻底取代 SideEmb、UserSideEmb、ItemSideEmb 等一众子类。
     """
-    def __init__(self, emb_settings: Iterable[EmbSetting] = None, manager: 'SchemaManager' = None):
+    def __init__(self, emb_settings: Iterable[EmbSetting] = None, manager: 'SchemaManager' = None, init_method='normal', init_std=1e-3):
         super(OmniEmbLayer, self).__init__()
         if manager is not None:
             emb_settings = manager.settings
@@ -413,7 +413,7 @@ class OmniEmbLayer(nn.Module):
         self.source2settings: Dict[FeatureSource, List[EmbSetting]] = {}
 
         self.group2fields = {}
-        self._init_embedding()
+        self._init_embedding(init_method=init_method, init_std=init_std)
 
         self.seq_groups = {}
         for g_name, fields in self.group2fields.items():
@@ -450,7 +450,7 @@ class OmniEmbLayer(nn.Module):
             exclude_fields=domain_fields,
         )
 
-    def _init_embedding(self):
+    def _init_embedding(self, init_method='normal', init_std=1e-3):
         for setting in self.settings:
             # A. 维护 Source 映射
             self.source2settings.setdefault(setting.source, []).append(setting)
@@ -460,7 +460,8 @@ class OmniEmbLayer(nn.Module):
                 self.emb_modules[setting.embedding_field_name] = RecEmbedding(
                     num_embeddings=setting.num_embeddings,
                     embedding_dim=setting.embedding_dim,
-                    padding_idx={True: 0, False: None}[setting.padding_zero]
+                    padding_idx={True: 0, False: None}[setting.padding_zero],
+                    init_method=init_method, init_std=init_std
                 )
 
             # C. 自动收集带有组名标签的序列特征

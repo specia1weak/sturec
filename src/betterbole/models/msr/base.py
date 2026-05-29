@@ -1,15 +1,18 @@
 import inspect
 import warnings
 from abc import ABC
-
+import torch
 from betterbole.emb import SchemaManager
-from betterbole.models.base import BaseModel
+from betterbole.models.base import BaseModel, ModelOutput
 
 
 class MSRModel(BaseModel):
     def __init__(self, manager: SchemaManager, num_domains: int, **kwargs):
         super(MSRModel, self).__init__(manager)
         self.num_domains = num_domains
+
+    def forward(self, x: torch.Tensor, domain_ids: torch.Tensor) -> ModelOutput:
+        pass
 
     @classmethod
     def from_manager(cls, manager: SchemaManager, num_domains: int, **kwargs) -> 'MSRModel':

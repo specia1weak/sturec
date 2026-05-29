@@ -74,33 +74,6 @@ class PLEVersion1(PLE):
         x = self.pre_project(x)
         return super().forward(x, domain_ids)
 
-class PLEVersion2(PLE):
-    def __init__(self, emb_size, num_domains, expert_dims=None):
-        super().__init__(emb_size, num_domains, expert_dims)
-        self.pre_project = MLP(emb_size, emb_size)
-
-    def forward(self, x, domain_ids):
-        scale = torch.sigmoid(self.pre_project(x))
-        return super().forward(scale * x, domain_ids)
-
-class PLEVersion3(PLE):
-    def __init__(self, emb_size, num_domains, expert_dims=None):
-        super().__init__(emb_size, num_domains, expert_dims)
-        self.pre_project = nn.Linear(emb_size, emb_size)
-
-    def forward(self, x, domain_ids):
-        x = self.pre_project(x)
-        return super().forward(x, domain_ids)
-
-class PLEVersion4(PLE):
-    def __init__(self, emb_size, num_domains, expert_dims=None):
-        super().__init__(emb_size, num_domains, expert_dims)
-        self.pre_project = MLP(emb_size, emb_size)
-
-    def forward(self, x, domain_ids):
-        residual = self.pre_project(x)
-        return super().forward(x + residual, domain_ids)
-
 if __name__ == '__main__':
     model = PLE(128, 5)
 

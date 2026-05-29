@@ -1,5 +1,5 @@
 from betterbole.models.backbone.mmoe import SingleLayerMMoE, SingleLayerMTLMMoE
-from betterbole.models.backbone.ple import PLE, PLEVersion1, PLEVersion2, PLEVersion3, PLEVersion4
+from betterbole.models.backbone.ple import PLE, PLEVersion1
 from betterbole.models.backbone.shabtm import SharedBottomLess, SharedBottomPlus
 from betterbole.models.backbone.star import STAR, StarPle
 
@@ -12,9 +12,6 @@ BACKBONE_REGISTRY = {
     "ple": PLE,
     "small_ple": PLE,
     "pleversion1": PLEVersion1,
-    "pleversion2": PLEVersion2,
-    "pleversion3": PLEVersion3,
-    "pleversion4": PLEVersion4,
     "mmoe": SingleLayerMMoE,
     "small_mmoe": SingleLayerMMoE,
     "singlelayermmoe": SingleLayerMMoE,
@@ -83,9 +80,6 @@ class SmallBacboneFactory(SmallBackboneFactory):
 __all__ = [
     "PLE",
     "PLEVersion1",
-    "PLEVersion2",
-    "PLEVersion3",
-    "PLEVersion4",
     "SingleLayerMMoE",
     "SingleLayerMTLMMoE",
     "SharedBottomLess",

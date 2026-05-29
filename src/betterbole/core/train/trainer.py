@@ -70,6 +70,7 @@ class BaseTrainer:
     def default_train_step(self, batch, ctx: TrainContext):
         loss = self.model.calculate_loss(batch)
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.model.parameters(), 10.0)
         self.optimizer.step()
         return loss.item()
 

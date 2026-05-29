@@ -26,18 +26,18 @@ change_root_workdir()
 
 @dataclass
 class KuairandConfig(ConfigBase):
-    dataset_name: str = "kuairand-raw"
+    dataset_name: str = "kuairand"
     seed: int = 2026
     device: str = "cuda"
-    max_epochs: int = 1
+    max_epochs: int = 30
     ckpt_dir: str = "" # 不保存ckpt
 
     batch_size: int = 4096
     id_emb: int = 32
-    side_emb: int = 32
+    side_emb: int = 16
     shuffle_buffer_size: int = 2000000
 
-    model: str = "crocodile_v1"
+    model: str = "riple"
     aux_loss_weight: float = 0.5
     log_name: str = "test.log"
 
@@ -56,7 +56,6 @@ class KuairandTrainer(BaseTrainer):
         if self.epoch != 0:
             self.model.omni_embedding.reinitialize_large_vocab_embeddings(1001, init_std=1e-2)
             print("重初始化")
-
         super().train_epoch()
 
 
@@ -156,11 +155,10 @@ if __name__ == '__main__':
     train_path, valid_path, test_path = manager.save_as_dataset(train_lf, valid_lf, test_lf)
     print("架构编译成功，可供调用。")
     # ======================== 模型在这里 ======================================== #
-    # num_domains = manager.get_setting(manager.domain_field).vocab_size
-    num_domains = 5
-    model = build_model(manager, num_domains, cfg.model, aux_loss_weight=cfg.aux_loss_weight)
+    num_domains = manager.get_setting(manager.domain_field).vocab_size
+    model = build_model(manager, num_domains, cfg.model, embed_dim=16, aux_loss_weight=cfg.aux_loss_weight)
     # ======================== 数据处理完成 准备trainer信息 ======================== #
-    ps_dataset = ParquetStreamDataset(train_path, manager, batch_size=cfg.batch_size, shuffle=True, shuffle_buffer_size=cfg.shuffle_buffer_size, drop_last=False) # 更少的读取
+    ps_dataset = ParquetStreamDataset(train_path, manager, batch_size=cfg.batch_size, shuffle=True, shuffle_buffer_size=cfg.shuffle_buffer_size) # 更少的读取
     ps_valid = ParquetStreamDataset(test_path, manager, batch_size=4096 * 2, shuffle=False) # 不能被shuffle
     # ======================== Trainer 准备 =======================#
     evaluator_manager = EvaluatorManager(log_path=WORKDIR / cfg.log_name, title=cfg.experiment_name)
