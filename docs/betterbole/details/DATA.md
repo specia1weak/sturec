@@ -1,125 +1,95 @@
-# 📊 数据模块 (data/)
+# data/
 
-> **层级**: L2 (数据与嵌入层)
->
-> 依赖 L1 (`Interaction`、`FeatureSource`)。为 L4 (模型层) 提供格式化后的 Tensor 数据。
->
-> ```
-> Parquet → DataScanner → DataTransformer → ShuffleBuffer → TensorFormatter → Interaction
-> ```
+`data/` 是把 `LazyFrame / Parquet` 变成 `Interaction` 的流水线层。
 
-## 流式数据管线架构
+## 1. 总流程
 
-```
-源数据 (Parquet / CSV)
-    │
-    ▼
-DataScanner ─────────── 流式读取，自动分片
-    │
-    ▼
-DataTransformer ─────── (可选) SchemaManager.transform
-    │
-    ▼
-ShuffleBuffer ───────── 大容量 Buffer + Shuffle
-    │
-    ▼
-TensorFormatter ─────── 每列按规则转 Tensor
-    │
-    ▼
-Interaction ─────────── 模型消费
+```text
+Parquet / LazyFrame
+  -> DataScanner
+  -> (optional) DataTransformer
+  -> ShuffleBuffer
+  -> TensorFormatter
+  -> Interaction
 ```
 
----
+## 2. `DataScanner`
 
-## DataScanner — [`data/dataset.py`](../../src/betterbole/data/dataset.py)
-
-扫描 Parquet 文件或 Polars LazyFrame，分片产出 `pyarrow.Table`。
+源码在 [`src/betterbole/data/dataset.py`](../../src/betterbole/data/dataset.py)。
 
 ```python
 scanner = DataScanner(
-    source="path/to/data.parquet",   # str / Path / list[str] / pl.LazyFrame
-    read_cols=["user_id", "item_id"], # 可选，只读指定列
-    filter_expr=pl.col("label") > 0, # 可选，过滤表达式
+    source="train.parquet",          # str / Path / list[str] / pl.LazyFrame
+    read_cols=["user_id", "item_id"],
+    filter_expr=pl.col("label") > 0,
 )
-
-for table in scanner.iter_batches(
-    batch_size=4096,
-    worker_id=0,
-    num_workers=1,
-):
-    # table: pyarrow.Table
 ```
 
-**核心逻辑**：
-- 当 `parquet_paths` 不为 None 且无 filter 时，使用 PyArrow 底层迭代器（最高效）
-- 否则回退到 Polars `collect_batches()` Lazy 模式
-- 多 Worker 下自动按文件或行号分片
+### 行为
 
----
+- 如果 `source` 是 parquet 路径且没有 `filter_expr`，会优先走 `pyarrow.parquet` 的批读取。
+- 如果 `source` 是 `pl.LazyFrame` 或存在过滤条件，会走 Polars lazy pipeline。
+- 多 worker 时会自动分片：
+  - parquet 路径模式按文件索引切分
+  - lazy 模式按行号取模切分
 
-## DataTransformer — [`data/dataset.py`](../../src/betterbole/data/dataset.py)
+### `iter_batches(batch_size, worker_id=0, num_workers=1)`
 
-将原始宽表实时 transform 为编码宽表。
+返回的是 `pyarrow.Table` 迭代器，不是 tensor。
+
+## 3. `DataTransformer`
 
 ```python
 transformer = DataTransformer(
-    manager=manager,                    # SchemaManager
-    preprocess_exprs=[...],             # 可选预处理表达式
-    filter_expr=None,                   # 可选过滤
-    output_col_names=manager.fields(),  # 输出列
+    manager=manager,
+    preprocess_exprs=[pl.col("date").cast(pl.Utf8).str.to_date()],
+    filter_expr=pl.col("label").is_not_null(),
+    output_col_names=manager.fields(),
 )
-
-transformed_table = transformer(raw_table)  # pa.Table → pa.Table
 ```
 
----
+它做三件事：
 
-## ShuffleBuffer — [`data/dataset.py`](../../src/betterbole/data/dataset.py)
+1. 把 `pyarrow.Table` 转成 `pl.DataFrame`
+2. 可选执行预处理表达式和过滤
+3. 调 `manager.transform(...)` 再转回 `pyarrow.Table`
 
-大容量 Shuffle Buffer：
+## 4. `ShuffleBuffer`
 
 ```python
 buffer = ShuffleBuffer(
-    capacity=2_000_000,   # 积累多少行后才开始产出 Batch
-    batch_size=4096,      # 每个 Batch 大小
-    shuffle=True,         # 是否打乱
-    drop_last=True,       # 是否丢弃最后一个不完整 Batch
+    capacity=2_000_000,
+    batch_size=4096,
+    shuffle=True,
+    drop_last=True,
 )
-
-# 数据入队
-buffer.push(table)
-
-# 产出 Batch（当积累达到 capacity 时）
-for batch_dict in buffer.yield_batches():
-    ...
-
-# 清空剩余数据
-for batch_dict in buffer.flush():
-    ...
 ```
 
----
+### 行为
 
-## PipelineStreamDataset — [`data/dataset.py`](../../src/betterbole/data/dataset.py)
+- 先积累到 `capacity`，再统一产出 batch。
+- batch 维度上的 shuffle 是在 buffer 内做的。
+- `yield_batches()` 只有在当前缓存行数达到 `capacity` 时才真正输出。
+- `flush()` 用来把最后一段剩余数据吐出来。
 
-完整的流式 Dataset，继承 `torch.utils.data.IterableDataset`：
+## 5. `PipelineStreamDataset`
+
+这是所有流式数据集的基类。
 
 ```python
 dataset = PipelineStreamDataset(
     scanner=scanner,
-    formatter=formatter,      # TensorFormatter
-    transformer=transformer,  # DataTransformer (可选)
-    buffer=buffer,            # ShuffleBuffer (可选)
+    formatter=formatter,
+    transformer=transformer,
+    buffer=buffer,
 )
 ```
 
-自动支持 `DataLoader(num_workers>1)`，每个 Worker 自动分片。
+`__iter__()` 会按 worker 自动读取、转换、切 batch、格式化，最终输出 `Interaction`。
 
----
+## 6. `ParquetStreamDataset`
 
-## ParquetStreamDataset — [`data/dataset.py`](../../src/betterbole/data/dataset.py)
-
-最常用的 Dataset（已编码 Parquet，无需实时 transform）：
+这是最常用的版本，前提是你已经有编码后的 parquet。
 
 ```python
 ds = ParquetStreamDataset(
@@ -128,19 +98,18 @@ ds = ParquetStreamDataset(
     batch_size=4096,
     shuffle=True,
     drop_last=True,
-    shuffle_buffer_size=2_000_000,
 )
-
-for interaction in ds:
-    # interaction: Interaction (dict of Tensor)
-    ...
 ```
 
----
+### 关键点
 
-## RawParquetStreamDataset — [`data/dataset.py`](../../src/betterbole/data/dataset.py)
+- 默认读取列由 `FeatureContext.from_manager(manager)` 推导。
+- `extra_col_names` 和 `extra_col_formatters` 可以补充额外列。
+- `batch_size` 只控制 dataset 内部 batch 的大小，不是外层 `DataLoader` 的 batch。
 
-读取原始 Parquet + 实时 transform：
+## 7. `RawParquetStreamDataset`
+
+用于“原始 parquet，读取时再 transform”。
 
 ```python
 ds = RawParquetStreamDataset(
@@ -148,39 +117,51 @@ ds = RawParquetStreamDataset(
     manager=manager,
     batch_size=4096,
     shuffle=True,
-    raw_preprocess_exprs=[...],
-    raw_filter_expr=None,
+    raw_preprocess_exprs=[pl.col("date").cast(pl.Utf8)],
+    raw_filter_expr=pl.col("split") == "train",
 )
 ```
 
----
+### 行为细节
 
-## Padding / Formatter — [`data/padding.py`](../../src/betterbole/data/padding.py)
+- 如果 `raw_preprocess_exprs` 为空，`raw_filter_expr` 会先在 scanner 阶段生效。
+- 如果 `raw_preprocess_exprs` 不为空，过滤会延后到 transformer 阶段。
 
-### `ColumnFormatter` 体系
+## 8. `FeatureContext` 和 `TensorFormatter`
 
-| Formatter | 用途 |
-|-----------|------|
-| `IntFormatter` | 离散 ID → `torch.long` |
-| `DenseFormatter` | 浮点数 → `torch.float32` |
-| `VectorDenseFormatter` | 定长向量 → `torch.float32` |
-| `PaddedIntSequenceFormatter` | 定长整型序列（右侧/左侧补齐） |
-| `PaddedFloatSequenceFormatter` | 定长浮点序列 |
-| `PaddedNestedSequenceFormatter` | 嵌套序列（如 tag 序列的序列） |
-| `FallbackFormatter` | 自动类型推断 |
+源码在 [`src/betterbole/data/padding.py`](../../src/betterbole/data/padding.py)。
 
 ### `FeatureContext`
 
-决定每列的读入和输出列名：
-
 ```python
-context = FeatureContext.from_manager(manager)       # 已编码数据
-context = FeatureContext.from_raw_manager(manager)   # 原始数据（读入列=raw，输出列=encoded）
+FeatureContext.from_manager(manager)
+FeatureContext.from_raw_manager(manager)
 ```
+
+- `from_manager()` 用于已经编码好的数据。
+- `from_raw_manager()` 用于原始数据，需要同时推导读入列和输出列。
 
 ### `TensorFormatter`
 
 ```python
 formatter = TensorFormatter(context)
-interaction = formatter.format(batch_dict)  # Dict[str, np.ndarray] → Interaction
+interaction = formatter.format(batch_dict)
 ```
+
+它会根据每个字段对应的 `EmbSetting.get_formatters()` 把 numpy / list 转成 tensor，再包成 `Interaction`。
+
+## 9. Formatter 类型
+
+- `DenseFormatter`
+- `VectorDenseFormatter`
+- `IntFormatter`
+- `FallbackFormatter`
+- `PaddedIntSequenceFormatter`
+- `PaddedFloatSequenceFormatter`
+- `PaddedNestedSequenceFormatter`
+
+### 约束
+
+- `VectorDenseFormatter` 会固定到 `dim`，超长截断，短的补 0。
+- `PaddedNestedSequenceFormatter` 用于嵌套 list，例如“标签序列的序列”。
+- `FallbackFormatter` 只是兜底，不要拿它当正式 schema 规则。

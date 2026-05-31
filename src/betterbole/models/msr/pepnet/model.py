@@ -46,7 +46,6 @@ class _PEPNetBaseModel(MSRModel):
             hidden_dims=tower_hidden_dims,
             dropout_rate=tower_dropout_rate,
         )
-
     def build_backbone(
             self,
             input_dim: int,

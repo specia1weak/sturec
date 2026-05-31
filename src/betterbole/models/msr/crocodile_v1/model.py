@@ -190,8 +190,6 @@ class CrocodileV1Model(MSRModel):
             hidden_activations: str = "relu",
             net_dropout: float = 0.0,
             batch_norm: bool = False,
-            embedding_regularizer: float = 0.0,
-            net_regularizer: float = 1e-6,
             disentangled_weight: float = 1e-4,
             prior_idx: Iterable[str] = None,
     ):
@@ -201,8 +199,6 @@ class CrocodileV1Model(MSRModel):
         self.num_experts = int(num_experts or num_domains)
         self.num_domains = int(num_domains)
         self.disentangled_weight = float(disentangled_weight)
-        self.embedding_regularizer = float(embedding_regularizer)
-        self.net_regularizer = float(net_regularizer)
 
         self.embedding_layer = CrocodileV1ExpertEmbedding(manager, num_experts=self.num_experts)
         self.embedding_dim = int(self.embedding_layer.base_embedding_dim)
@@ -292,22 +288,6 @@ class CrocodileV1Model(MSRModel):
                 )
         return disentangled_loss
 
-    def regularization_loss(self) -> torch.Tensor:
-        reg_term = torch.zeros((), device=next(self.parameters()).device)
-        if self.embedding_regularizer <= 0.0 and self.net_regularizer <= 0.0:
-            return reg_term
-
-        for name, param in self.named_parameters():
-            if not param.requires_grad:
-                continue
-            if "embedding_layer" in name:
-                if self.embedding_regularizer > 0.0:
-                    reg_term = reg_term + self.embedding_regularizer * torch.sum(param * param)
-            else:
-                if self.net_regularizer > 0.0:
-                    reg_term = reg_term + self.net_regularizer * torch.sum(param * param)
-        return reg_term
-
     def calculate_loss(self, interaction):
         labels = interaction[self.LABEL].float()
         x, prior_emb, domain_ids = self.encode_features(interaction)
@@ -317,5 +297,4 @@ class CrocodileV1Model(MSRModel):
         return (
             bce_loss
             + self.disentangled_weight * self._covariance_regularization(return_dict["expert_output"])
-            + self.regularization_loss()
         )

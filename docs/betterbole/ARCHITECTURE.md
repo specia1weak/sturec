@@ -1,192 +1,128 @@
-# 🏛️ 架构设计 (ARCHITECTURE)
+# 架构设计
 
-> betterbole 按**分层架构**组织，共 6 层。下层提供基础抽象，上层编排调度。
+当前仓库可以按 6 个层次理解，但更准确的说法不是“严格框架分层”，而是“按训练链路分组的模块集”。
 
-## 分层架构图
+## 分层视图
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│  L6: 实验层 (experiment/)                                    │
-│  GridSearchEngine │ TrainingTracker │ ParamManager           │
-│  🎯 职责: 实验管理、超参搜索、Checkpoint 追踪                   │
-├─────────────────────────────────────────────────────────────┤
-│  L5: 训练层 (core/train/)                                    │
-│  BaseTrainer │ TrainContext │ Hooks │ EarlyStopper           │
-│  🎯 职责: 训练循环编排、Hook 扩展、早停                         │
-├─────────────────────────────────────────────────────────────┤
-│  L4: 模型层 (models/)                                        │
-│  MSRModel → Backbone(MMoE/PLE/STAR/M2M/PPNet/EPNet)         │
-│          → DomainTowerHead → AutoMTL/HAMUR/HierRec           │
-│  🎯 职责: 14 种多场景推荐模型，可插拔 Backbone                  │
-├─────────────────────────────────────────────────────────────┤
-│  L3: 评估层 (evaluate/)                                      │
-│  EvaluatorManager → (PointWise|TopK)Evaluator → Metrics      │
-│  🎯 职责: 多评估器编排、Domain 分流、指标计算                    │
-├─────────────────────────────────────────────────────────────┤
-│  L2: 数据与嵌入层 (emb/ + data/)                              │
-│  SchemaManager → OmniEmbLayer → DataScanner → TensorFormatter│
-│  🎯 职责: 特征工程、流式加载、统一 Embedding                     │
-├─────────────────────────────────────────────────────────────┤
-│  L1: 基础层 (core/ + utils/ + datasets/)                     │
-│  Interaction │ FeatureSource │ 采样/计时/排序/可视化/数据集     │
-│  🎯 职责: 数据容器、枚举、工具函数、内置数据集                    │
-└─────────────────────────────────────────────────────────────┘
+```text
+L6  experiment/     参数解析、脚本调度、实验辅助
+L5  core/train/     训练循环、hook、早停
+L4  models/         基础模型、多场景模型、backbone、head
+L3  evaluate/       指标计算、多评估器编排
+L2  emb/ + data/    特征规则、编码、embedding、流式数据集
+L1  core/ + utils/ + datasets/  基础枚举、Interaction、工具函数、数据路径封装
 ```
 
----
+## 一条真实的执行链
 
-## 调用链路 (从入口到底层)
-
-```
-用户入口
-    │
-    ▼
-L6 ParamManager.build(...)  ──→ 解析配置 (code > CLI > default)
-    │
-    ▼
-L2 SchemaManager(settings)   ──→ 注册 EmbSetting
-L2 SchemaManager.fit(lf)     ──→ 扫描训练集，构建词表/参数
-L2 SchemaManager.transform() ──→ 转换全量数据
-    │
-    ▼
-L2 DataScanner + DataTransformer + ShuffleBuffer + TensorFormatter
-    │
-    ▼  Interaction (Tensor dict)
-    │
-L4 OmniEmbLayer.whole(interaction)  ──→ 统一特征注入
-L4 Backbone.forward(x, domain_ids)   ──→ 骨干网络
-L4 DomainTowerHead.forward(x, domain_ids) ──→ 每 Domain 独立输出
-    │
-    ▼  logits
-    │
-L3 EvaluatorManager.collect(...)     ──→ 收集预测结果
-L3 Evaluator.summary()              ──→ 计算指标
-    │
-    ▼
-L5 BaseTrainer.train_epoch()        ──→ 训练
-L5 EarlyStopper.step(summary_dict)  ──→ 判断早停
-L5 BaseTrainer.save_checkpoint()    ──→ 保存模型
-    │
-    ▼
-L6 TrainingTracker.log_metrics()    ──→ 记录实验
-L6 GridSearchEngine.run()           ──→ 多 GPU 并行搜索
+```text
+raw parquet / lazyframe
+    -> SchemaManager.split_dataset(...)
+    -> SchemaManager.fit(train_raw)
+    -> SchemaManager.transform(...)
+    -> save_as_dataset(...)
+    -> ParquetStreamDataset / RawParquetStreamDataset
+    -> Interaction
+    -> OmniEmbLayer
+    -> MSR model / custom BaseModel
+    -> EvaluatorManager
+    -> BaseTrainer
 ```
 
-## 整体数据流
+## 每层负责什么
 
-```
-原始 Parquet/CSV
-     │
-     ▼
-┌──────────────────┐
-│  SchemaManager   │  ← EmbSetting 定义每个特征怎么处理
-│  ┌──────────────┐│
-│  │ fit(训练集)   ││  → 扫描统计量，构建词表/边界/归一化参数
-│  │ transform( ) ││  → 用固化规则变换任意 Split
-│  └──────────────┘│
-│  → feature_meta  │  → 固化状态到 JSON
-└────────┬─────────┘
-         │ encoded parquet
-         ▼
-┌──────────────────┐
-│  DataScanner     │  → 流式读取 Parquet，支持多 Worker 分片
-│  DataTransformer │  → 实时 transform (RawParquetStreamDataset 模式)
-│  ShuffleBuffer   │  → 大容量 Shuffle Buffer (200w+行)
-│  TensorFormatter │  → 每列根据 setting 决定 IntFormatter/DenseFormatter/PaddedFormatter
-└────────┬─────────┘
-         │ Interaction (dict of Tensor)
-         ▼
-┌──────────────────┐
-│  OmniEmbLayer    │  → 接收 Interaction，通过 EmbView 路由到指定字段
-│  │               │  → 每个 Setting.compute_tensor() 取出对应 Tensor
-│  │               │    并通过 nn.Embedding 查表
-│  ▼               │
-│  Concatenated    │  → 按 source/name/none 拼接 Embedding
-└────────┬─────────┘
-         │ embedding tensor
-         ▼
-┌──────────────────┐
-│   Backbone       │  → SharedBottom / MMoE / PLE / STAR
-│   (Tower)        │  → 每个 Domain 独立 Tower
-└────────┬─────────┘
-         │ logits
-         ▼
-┌──────────────────┐
-│  Trainer         │  → train_epoch → evaluate_epoch → early_stop
-│  Evaluator       │  → AUC / LogLoss / GAUC / HR@K / NDCG@K
-└──────────────────┘
-```
+### L1: 基础抽象
 
-## 核心设计模式
+- [`core/enum_type.py`](../../src/betterbole/core/enum_type.py)
+  - `FeatureSource`、`InputType`、`EvaluatorType` 等基础枚举。
+- [`core/interaction.py`](../../src/betterbole/core/interaction.py)
+  - batch 级别的 tensor 容器，训练和评估都围绕它传递。
+- [`utils/`](../../src/betterbole/utils)
+  - 负采样、时序序列构造、优化器分组、时间桶、可视化等杂项工具。
+- [`datasets/`](../../src/betterbole/datasets)
+  - 若干本地数据集路径适配器，不负责自动下载。
 
-### 1. 声明式特征工程 (`EmbSetting`)
+### L2: 特征与数据流
 
-每个字段的特征处理规则被封装为一个 [`EmbSetting`](../../src/betterbole/emb/schema/base.py) 子类：
+- [`emb/schema/`](../../src/betterbole/emb/schema)
+  - 每个字段如何拟合、如何转换、如何转 tensor、如何前向取值，都由 `EmbSetting` 子类定义。
+- [`emb/manager.py`](../../src/betterbole/emb/manager.py)
+  - 负责 `fit / transform / split / save / load` 的总调度。
+- [`emb/emblayer.py`](../../src/betterbole/emb/emblayer.py)
+  - `OmniEmbLayer` 把当前 batch 的 `Interaction` 转成模型可用的 embedding。
+- [`data/dataset.py`](../../src/betterbole/data/dataset.py)
+  - 流式扫描 parquet，按 worker 分片、shuffle、format，最终产出 `Interaction`。
 
-```
-get_fit_exprs()        → 扫描训练集，收集统计信息
-parse_fit_result()     → 从统计结果构建词表/参数
-get_transform_expr()   → 用词表/参数转换原始数据
-get_formatters()       → 定义该列如何转为 PyTorch Tensor
-compute_tensor()       → 前向传播时，从 Interaction 中取 Tensor
-```
+### L3: 评估
 
-### 2. 调度编排 (`SchemaManager`)
+- [`evaluate/evaluator.py`](../../src/betterbole/evaluate/evaluator.py)
+  - 单个 evaluator，内部组合 point-wise / top-k evaluator。
+- [`evaluate/manager.py`](../../src/betterbole/evaluate/manager.py)
+  - 多 evaluator 注册表，支持按 domain 过滤后分别汇总。
 
-[`SchemaManager`](../../src/betterbole/emb/manager.py) 是特征工程的总调度：
+### L4: 模型
 
-- `prepare_data()` — 全自动流程：fit + transform 一把梭
-- `fit()` — 仅在训练集上拟合
-- `transform()` — 对任意 Split 应用固化规则
-- `split_dataset()` — 4 种切分策略
-- `save_schema()` / `load_schema()` — 固化 / 恢复
+- [`models/base.py`](../../src/betterbole/models/base.py)
+  - `BaseModel` 自动挂上 `OmniEmbLayer`。
+- [`models/msr/`](../../src/betterbole/models/msr)
+  - 所有多场景模型的实现和注册表。
+- [`models/backbone/`](../../src/betterbole/models/backbone)
+  - 共享底座、MMoE、PLE、STAR 等骨干实现。
+- [`models/msr/components/heads.py`](../../src/betterbole/models/msr/components/heads.py)
+  - `DomainTowerHead` 把共享表征映射到 domain-specific logit。
 
-### 3. 统一 Embedding 层 (`OmniEmbLayer`)
+### L5: 训练
 
-[`OmniEmbLayer`](../../src/betterbole/emb/emblayer.py) 替代了传统的 SideEmb / UserSideEmb / ItemSideEmb 等子类：
+- [`core/train/trainer.py`](../../src/betterbole/core/train/trainer.py)
+  - `BaseTrainer` 定义默认训练/验证循环。
+- [`core/train/hooks.py`](../../src/betterbole/core/train/hooks.py)
+  - `custom_train_step` 和 epoch hook 的协议。
+- [`core/train/early_stepper.py`](../../src/betterbole/core/train/early_stepper.py)
+  - 自动挑指标、维护最佳值和 patience。
 
-- 内部纳管所有 `EmbSetting`
-- `forward()` 通过 `target_sources` / `include_fields` / `exclude_fields` 动态路由
-- 预置了 `user_all` / `item_all` / `inter` / `whole` / `domain` 等 `EmbView`
+### L6: 参数和实验
 
-### 4. 多场景多任务 (MSR)
+- [`experiment/param.py`](../../src/betterbole/experiment/param.py)
+  - `ConfigBase`、`ParamManager`、`seed_everything`。
+- [`experiment/engine.py`](../../src/betterbole/experiment/engine.py)
+  - `GridSearchEngine` 用 subprocess 启多个实验脚本。
+- [`experiment/tracker.py`](../../src/betterbole/experiment/tracker.py)
+  - 一个独立的 checkpoint / vector 跟踪小工具，但当前 `BaseTrainer` 默认不会自动接入它。
 
-所有 MSR 模型继承自 [`MSRModel`](../../src/betterbole/models/msr/base.py)，接收：
+## 三个关键契约
 
-- `interaction`：宽表交互数据
-- `domain_ids`：域标识
+### 1. `SchemaManager` 产出的字段集合决定后续 batch 结构
 
-内部结构：
-```
-OmniEmbLayer → Backbone(共享) → Domain Towers(独立)
+`manager.fields()` 会把：
+
+- 所有 `setting.get_output_field_names()`
+- `time_field`
+- `label_fields`
+- `domain_fields`
+
+统一加入输出列集合。后面的 dataset formatter 和 trainer 都默认按这个结构工作。
+
+### 2. 模型前向依赖 `Interaction`
+
+大多数 MSR 模型的最小路径是：
+
+```python
+x = self.omni_embedding.whole(interaction)
+domain_ids = interaction[self.DOMAIN].long()
+logits = self.backbone(x, domain_ids)
 ```
 
-### 5. 流式数据管线
+这也是为什么 domain 列即使不做 embedding，也必须保留在 batch 里。
 
-```
-DataScanner (Polars LazyFrame / PyArrow)
-    → DataTransformer (SchemaManager.transform)
-    → ShuffleBuffer (大容量 buffer)
-    → TensorFormatter (列→Tensor)
-    → Interaction
-```
+### 3. 评估默认走 `model.predict()`
 
-支持 `torch.utils.data.DataLoader` 多进程，且 Worker 间自动按文件/行号分片。
+`BaseTrainer` 不区分“训练 logits”和“评估概率”，它只会调用 `predict()`。因此你需要自己保证：
 
-## 模块依赖关系
+- 评估指标和 `predict()` 输出语义匹配。
+- 如果模型需要特殊评估逻辑，可以覆写 `predict_step()` 或整个 `evaluate_epoch()`。
 
-```
-experiment/  ← 顶层入口
-    │
-models/      ← 需要 emb/ + core/interaction
-    │
-core/train/  ← 需要 models/ + evaluate/ + data/
-    │
-data/        ← 需要 emb/ (SchemaManager)
-    │
-emb/         ← 自包含 + core/enum_type
-    │
-evaluate/    ← 自包含 (sklearn)
-    │
-utils/       ← 独立工具函数
-```
+## 哪些东西不要误以为是“框架约定”
+
+- `TrainingTracker` 不是 trainer 默认依赖。
+- `prepare_data()` 虽然存在，但源码注释已经明确“不建议使用”；推荐显式走 `split -> fit -> transform`。
+- `@examples/ml-1m` 中的很多实验文件是历史草稿，不代表当前公共 API。

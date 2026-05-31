@@ -1,14 +1,24 @@
-# 🧪 实验模块 (experiment/)
+# experiment/
 
-> **层级**: L6 (实验层) — 最高层
->
-> 依赖 L1~L5 所有模块。作为用户入口，协调参数管理、网格搜索、实验追踪。
+这一层负责参数、脚本启动和实验记录，但它不是训练核心。
 
-## 参数管理 — [`param.py`](../../src/betterbole/experiment/param.py)
+## 1. `experiment/__init__.py`
 
-### `ConfigBase`
+源码在 [`src/betterbole/experiment/__init__.py`](../../src/betterbole/experiment/__init__.py)。
 
-所有配置的基类 DataClass：
+当前实际导出的东西很少：
+
+- `ROOT_DIR`
+- `WORKSPACE`
+- `ignore_future_warning()`
+- `change_root_workdir()`
+- `set_all()`
+
+注意：当前源码里没有 `preset_workdir` 这个公共函数，不要把旧文档里的写法继续当真。
+
+## 2. `ConfigBase`
+
+源码在 [`src/betterbole/experiment/param.py`](../../src/betterbole/experiment/param.py)。
 
 ```python
 @dataclass
@@ -19,102 +29,94 @@ class ConfigBase:
     device: str = "cpu"
     max_epochs: int = 100
     ckpt_dir: str = ""
-    extras: dict = field(default_factory=dict)  # 兜底字典
+    extras: dict = field(default_factory=dict)
 ```
 
-**特性**：
-- `extras` 兜底：任何未声明的字段自动存入 `cfg.extras`，可通过 `cfg.xxx` 访问
-- `__str__` 美观打印所有配置项
-- 子类必须为所有字段添加**类型注解**
+### 特性
 
-### `ParamManager`
+- `__getattr__` 会去 `extras` 里找未显式声明的参数。
+- `__init_subclass__` 会拦截没有类型注解的字段。
+- `__str__` 会输出一个比较完整的配置快照。
 
-多来源参数合并（代码 > 命令行 > 默认值）：
+## 3. `ParamManager`
 
 ```python
-manager = ParamManager(MyConfig)
+pm = ParamManager(MyConfig)
+cfg = pm.build(learning_rate=1e-3)
+```
 
-# 注册字符串→实例的映射
-manager.register("model", {
-    "sharedbottom": SharedBottomModel,
+### 参数优先级
+
+当前源码真实优先级是：
+
+`命令行参数 > build() 传入参数 > dataclass 默认值`
+
+这点和旧文档写反了，务必按源码记。
+
+### `register(field_name, mapping_dict)`
+
+用于把字符串参数映射到具体类或工厂函数。
+
+```python
+pm.register("model", {
+    "mmoe": MMoEModel,
     "ple": PLEModel,
 })
-
-# 合并参数
-cfg = manager.build(
-    model="ple",            # 代码传入
-    learning_rate=0.001,    # 自动进入 extras
-)
-# 也支持 python script.py --model ple --learning_rate 0.001
 ```
 
-**参数优先级**：命令行参数 > `build()` 代码参数 > DataClass 默认值
+如果命令行或 `build()` 里传进来的是字符串，就会被映射成对应对象。
 
-### `seed_everything(seed)`
-
-一键设置所有随机种子。
-
----
-
-## 网格搜索 — [`engine.py`](../../src/betterbole/experiment/engine.py)
-
-### `GridSearchEngine`
-
-多 GPU 并行网格搜索：
+## 4. `seed_everything`
 
 ```python
-engine = GridSearchEngine(script_path="run.py")
+seed_everything(2026)
+```
 
-search_space = {
-    "model": ["star", "ple"],
-    "seed": [2024, 2025, 2026],
-    "device": ["cuda"]
-}
+会同步设置 Python、NumPy、PyTorch 以及 cudnn 相关随机状态。
 
-# 自动分配 GPU，并行执行
+## 5. `GridSearchEngine`
+
+源码在 [`src/betterbole/experiment/engine.py`](../../src/betterbole/experiment/engine.py)。
+
+```python
+engine = GridSearchEngine(script_path="@examples/kuairand-1k/kuairan1k.py")
 engine.run(
-    param_space=search_space,
+    param_space={
+        "model": ["mmoe", "ple"],
+        "seed": [2024, 2025],
+        "device": ["cuda"],
+    },
     available_gpus=[0, 1],
     log_dir="./logs",
 )
 ```
 
-- 自动生成笛卡尔积组合
-- 轮询分配 GPU
-- 每个实验独立日志文件
+### 行为
 
----
+- 先做笛卡尔积展开。
+- 每个组合起一个 subprocess。
+- 用 `CUDA_VISIBLE_DEVICES` 轮询绑定 GPU。
+- 输出重定向到单独日志文件。
 
-## 实验跟踪 — [`tracker.py`](../../src/betterbole/experiment/tracker.py)
+### 注意
 
-### `TrainingTracker`
+这不是分布式训练器，只是“脚本级并行启动器”。
 
-简单但完整的实验跟踪器：
+## 6. `TrainingTracker`
 
-```python
-tracker = TrainingTracker(workdir="./outputs")
+源码在 [`src/betterbole/experiment/tracker.py`](../../src/betterbole/experiment/tracker.py)。
 
-# 记录指标
-tracker.log_metrics({'train_loss': 0.5, 'lr': 0.001})
+它能：
 
-# 保存断点
-tracker.save_checkpoint(model, optimizer, is_best=True, metric_val=0.73)
+- 记录指标历史
+- 保存 checkpoint
+- 加载 checkpoint
+- 导出向量到 `.npz`
 
-# 加载恢复
-tracker.load_checkpoint(model, optimizer, ckpt_path="./checkpoints/best_model.pth")
+但它和 `BaseTrainer` 是两个独立系统。当前默认训练流程不会自动调用它。
 
-# 导出中间向量
-tracker.save_vector("user_emb", user_embedding)
-tracker.export_vectors()
-```
+## 7. 实际建议
 
-**Checkpoint 内容**：
-```python
-{
-    'global_step': int,
-    'epoch': int,
-    'model_state_dict': ...,
-    'optimizer_state_dict': ...,
-    'metric': float,
-}
-```
+- 需要训练流程时优先用 `BaseTrainer`。
+- 需要脚本级并行实验时用 `GridSearchEngine`。
+- 需要做长期记录、导出向量、手工恢复时再考虑 `TrainingTracker`。

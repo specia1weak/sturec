@@ -101,7 +101,7 @@ import torch.nn as nn
 class FeatureBifurcator(nn.Module):
     def __init__(self, num_features, feature_dim=-1, mean_dims=0, normalize_var=False, stack_dim=1):
         """
-        通用特征分化组件：将任意特征分离为“静态可学习基准(Bias)”和“零均值动态波动(Fluctuation)”
+        通用特征分化组件：将任意特征分离为“静态可学习基准(Bias)”和“零均值动态波动(Fluctuation)” 一般来说只使用Fluctuation，并且监控它的大小可以判断特征的重要程度
 
         :param num_features: 特征的通道数（用于初始化可学习的静态 Bias）
         :param feature_dim: 特征所在的维度索引。对于 Linear 是 -1，对于 Conv2d(B,C,H,W) 通常是 1

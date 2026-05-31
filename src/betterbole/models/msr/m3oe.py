@@ -1,8 +1,11 @@
-from typing import Iterable, Type
+from typing import Dict, Iterable, Optional, Type
 
 import torch
 from torch import nn
 
+from betterbole.core.train.context import TrainContext
+from betterbole.core.train.hooks import CustomTrainStepProtocol, TrainerHooksProtocol
+from betterbole.core.interaction import Interaction
 from betterbole.emb import SchemaManager
 from betterbole.models.msr.base import MSRModel
 from betterbole.models.msr.components import DomainTowerHead
@@ -174,6 +177,17 @@ class M3oEBackbone(nn.Module):
     def arch_parameters_name(self):
         return ("balance_factor", "balance_gate")
 
+    def arch_parameters(self):
+        params = []
+        balance_gate = getattr(self, "balance_gate", None)
+        if balance_gate is not None:
+            params.extend(list(balance_gate.parameters()))
+        for module_name in ("domain_expert_factor", "domain_balance_factor"):
+            module = getattr(self, module_name, None)
+            if module is not None:
+                params.extend(list(module.parameters()))
+        return params
+
 
 class M3oEVersion1Backbone(M3oEBackbone):
     def __init__(
@@ -225,7 +239,7 @@ class M3oEVersion2Backbone(M3oEBackbone):
         )
 
 
-class _BaseM3oEModel(MSRModel):
+class _BaseM3oEModel(MSRModel, CustomTrainStepProtocol, TrainerHooksProtocol):
     BACKBONE_CLS: Type[M3oEBackbone] = M3oEBackbone
 
     def __init__(
@@ -239,6 +253,7 @@ class _BaseM3oEModel(MSRModel):
             shared_gate_detach: bool = None,
             tower_hidden_dims: Iterable[int] = None,
             tower_dropout_rate: float = 0.2,
+            arch_lr: float = 1e-3,
     ):
         super().__init__(manager, num_domains)
         self.DOMAIN = self.manager.domain_field
@@ -263,6 +278,10 @@ class _BaseM3oEModel(MSRModel):
             hidden_dims=tower_hidden_dims,
             dropout_rate=tower_dropout_rate,
         )
+        self.arch_lr = float(arch_lr)
+        self.arch_optimizer: Optional[torch.optim.Optimizer] = None
+        self._cached_arch_batch: Optional[Interaction] = None
+        self._latest_arch_debug: Dict[str, float] = {}
 
     def encode_features(self, interaction):
         x = self.input_view(interaction)
@@ -279,6 +298,70 @@ class _BaseM3oEModel(MSRModel):
         labels = interaction[self.LABEL].float()
         logits = self.predict(interaction)
         return nn.functional.binary_cross_entropy_with_logits(logits, labels)
+
+    def _arch_parameters(self):
+        return [param for param in self.backbone.arch_parameters() if param.requires_grad]
+
+    def _ensure_arch_optimizer(self, weight_decay: float = 0.0) -> Optional[torch.optim.Optimizer]:
+        arch_params = self._arch_parameters()
+        if not arch_params:
+            return None
+        if self.arch_optimizer is None:
+            self.arch_optimizer = torch.optim.Adam(
+                arch_params,
+                lr=self.arch_lr,
+                weight_decay=float(weight_decay),
+            )
+        return self.arch_optimizer
+
+    def _clear_arch_grads(self) -> None:
+        for param in self._arch_parameters():
+            param.grad = None
+
+    def custom_train_step(self, batch_interaction, ctx: TrainContext):
+        loss = self.calculate_loss(batch_interaction)
+        loss.backward()
+        self._clear_arch_grads()
+        torch.nn.utils.clip_grad_norm_(self.parameters(), 10.0)
+        ctx.optimizer.step()
+        self._cached_arch_batch = batch_interaction.cpu()
+        return float(loss.item())
+
+    def on_train_epoch_start(self, ctx: TrainContext) -> None:
+        del ctx
+        self._cached_arch_batch = None
+
+    def on_train_epoch_end(self, ctx: TrainContext) -> None:
+        arch_optimizer = self._ensure_arch_optimizer(
+            weight_decay=ctx.optimizer.param_groups[0].get("weight_decay", 0.0)
+        )
+        if arch_optimizer is None or self._cached_arch_batch is None:
+            return
+
+        arch_batch = self._cached_arch_batch.to(ctx.cfg.device)
+        self.zero_grad(set_to_none=True)
+        arch_optimizer.zero_grad(set_to_none=True)
+        loss = self.calculate_loss(arch_batch)
+        loss.backward()
+        arch_optimizer.step()
+        self.zero_grad(set_to_none=True)
+
+        debug = {
+            "arch_loss": float(loss.item()),
+        }
+        if self.backbone.last_inner_factor is not None:
+            debug["inner_factor"] = float(self.backbone.last_inner_factor.float().mean().item())
+        if self.backbone.last_outer_factor is not None:
+            debug["outer_factor"] = float(self.backbone.last_outer_factor.float().mean().item())
+        self._latest_arch_debug = debug
+        print(
+            "[M3oE Arch] "
+            + " ".join(f"{key}={value:.4f}" for key, value in debug.items())
+        )
+
+    def on_eval_epoch_end(self, metrics: Optional[dict], ctx: TrainContext) -> None:
+        del metrics, ctx
+        return
 
 
 class M3oEModel(_BaseM3oEModel):

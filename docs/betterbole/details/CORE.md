@@ -1,183 +1,265 @@
-# ⚙️ 核心模块 (core/)
+# core/
 
-> **层级**: L1 (基础层) + L5 (训练层)
->
-> L1 部分: 枚举类型 + `Interaction` 数据容器 → 自包含，无下层依赖
->
-> L5 部分: `BaseTrainer` + `TrainContext` + `Hooks` + `EarlyStopper` → 依赖 L1~L4
+`core/` 提供的是最底层但最常用的两个东西：
 
----
+1. 推荐训练里通用的数据容器 `Interaction`
+2. 训练循环相关的 `BaseTrainer` / `TrainContext` / `EarlyStopper`
 
-## 组织说明
+## 1. 枚举
 
-```
-L1 ──────────────────────────────────────────────────
-core/enum_type.py     → 6 个核心枚举（FeatureSource 等）
-core/interaction.py   → Tensor 字典容器
-─────────────────────────────────────────────────────
-L5 ──────────────────────────────────────────────────
-core/train/trainer.py       → BaseTrainer 训练循环
-core/train/context.py       → 训练上下文
-core/train/hooks.py         → Hook 扩展协议
-core/train/early_stepper.py → 早停机制
-─────────────────────────────────────────────────────
-```
-
-## 枚举类型 — [`core/enum_type.py`](../../src/betterbole/core/enum_type.py)
+源码在 [`src/betterbole/core/enum_type.py`](../../src/betterbole/core/enum_type.py)。
 
 ### `ModelType`
 
-| 值 | 说明 |
-|----|------|
-| `GENERAL` | 通用推荐 |
-| `SEQUENTIAL` | 序列推荐 |
-| `CONTEXT` | 上下文感知推荐 |
-| `KNOWLEDGE` | 基于知识的推荐 |
+- `GENERAL`
+- `SEQUENTIAL`
+- `CONTEXT`
+- `KNOWLEDGE`
+- `TRADITIONAL`
+- `DECISIONTREE`
+
+### `KGDataLoaderState`
+
+- `RSKG`
+- `RS`
+- `KG`
 
 ### `EvaluatorType`
 
-| 值 | 说明 |
-|----|------|
-| `RANKING` | 排序指标 (NDCG/Recall/HR) |
-| `VALUE` | 数值指标 (AUC/LogLoss) |
+- `RANKING`
+- `VALUE`
 
 ### `InputType`
 
-| 值 | 说明 |
-|----|------|
-| `POINTWISE` | 单点输入 `(uid, iid, label)` |
-| `PAIRWISE` | 成对输入 `(uid, pos_iid, neg_iid)` |
+- `POINTWISE`
+- `PAIRWISE`
+- `LISTWISE`
 
-### `FeatureType` — 特征值类型
+### `FeatureType`
 
-| 值 | 说明 |
-|----|------|
-| `TOKEN` | 离散 Token (user_id, item_id) |
-| `FLOAT` | 浮点数 (rating, timestamp) |
-| `TOKEN_SEQ` | 离散序列 (review) |
-| `FLOAT_SEQ` | 浮点序列 (预训练向量) |
+- `TOKEN`
+- `FLOAT`
+- `TOKEN_SEQ`
+- `FLOAT_SEQ`
 
-### `FeatureSource` — 特征来源
+### `FeatureSource`
 
-| 值 | 说明 |
-|----|------|
-| `USER_ID` | 用户主键 |
-| `ITEM_ID` | 物品主键 |
-| `USER` | 用户侧属性 |
-| `ITEM` | 物品侧属性 |
-| `INTERACTION` | 交互侧属性 |
-| `SEQ` | 序列特征 |
-| `SEQ_GROUP` | 序列组 |
-| `KG` | 知识图谱 |
-| `NET` | 社交网络 |
+- `UNKNOWN`
+- `INTERACTION`
+- `USER`
+- `ITEM`
+- `USER_ID`
+- `ITEM_ID`
+- `SEQ`
+- `SEQ_GROUP`
+- `KG`
+- `NET`
 
----
+## 2. `Interaction`
 
-## Interaction — [`core/interaction.py`](../../src/betterbole/core/interaction.py)
+源码在 [`src/betterbole/core/interaction.py`](../../src/betterbole/core/interaction.py)。
 
-推荐系统中**一个 Batch 的交互记录**的 Tensor 字典容器。
+`Interaction` 是一个 batch 级别的 tensor 容器，本质上可以把它理解成“能搬到 GPU 上的字典”。
 
-### 核心特性
+```python
+from betterbole.core.interaction import Interaction
 
-```
-Interaction 内部结构：{ "user_id": Tensor[B], "item_id": Tensor[B], "label": Tensor[B] }
+batch = Interaction({
+    "user_id": torch.tensor([1, 2]),
+    "item_id": torch.tensor([10, 11]),
+    "label": torch.tensor([1, 0]),
+})
 ```
 
 ### 常用方法
 
-| 方法 | 说明 |
-|------|------|
-| `to(device)` | 将 Tensor 转移到指定设备 |
-| `cpu()` / `numpy()` | 转移至 CPU 或转为 NumPy |
-| `repeat(n)` / `repeat_interleave(n)` | 沿 Batch 维重复 |
-| `shuffle()` | 原地打乱 |
-| `sort(by, ascending)` | 按指定字段排序 |
-| `update(new_inter)` | 合并另一个 Interaction |
-| `drop(column)` | 删除列 |
-| `add_prefix(prefix)` | 列名前缀 |
+- `to(device, selected_field=None)`
+- `cpu()`
+- `numpy()`
+- `repeat(sizes)`
+- `repeat_interleave(repeats, dim=0)`
+- `update(new_inter)`
+- `drop(column)`
+- `shuffle()`
+- `sort(by, ascending=True)`
+- `add_prefix(prefix)`
+
+### 行为特点
+
+- `Interaction["field"]` 返回单列 tensor。
+- `Interaction[index]` 返回裁切后的新 `Interaction`。
+- `Interaction.to(...)` 不会原地修改，而是返回新对象。
+- `shuffle()` / `sort()` 会原地改内部顺序。
 
 ### `cat_interactions(interactions)`
 
-拼接多个 Interaction → 一个 Interaction。
+把多个 `Interaction` 按 batch 维拼起来。前提是字段集合完全一致。
 
----
+## 3. 训练上下文
 
-## 训练框架 — [`core/train/`](../../src/betterbole/core/train/)
+源码在 [`src/betterbole/core/train/context.py`](../../src/betterbole/core/train/context.py)。
 
-### `BaseTrainer` — [`trainer.py`](../../src/betterbole/core/train/trainer.py)
+### `TrainContext`
 
-统一的训练基座：
-
+```python
+@dataclass
+class TrainContext:
+    epoch: int
+    global_step: int
+    batch_idx: int
+    optimizer: torch.optim.Optimizer
+    manager: Any
+    cfg: Any
+    timer: Any
+    recorder: Any = None
+    kwargs: Dict[str, Any] = None
 ```
-初始化：model + optimizer + manager + loaders + components + cfg
-    │
-    ▼
-run():
-    for epoch in max_epochs:
-        train_epoch()          ← model.calculate_loss() + optimizer.step()
-        evaluate_epoch()       ← model.predict() + evaluator.collect() + summary()
-        early_stepper.step()   ← 早停 / 保存最佳 Checkpoint
-```
 
-### `TrainContext` — [`context.py`](../../src/betterbole/core/train/context.py)
+它主要用于把训练状态和实验上下文传给自定义 step / hook。
 
-训练时的上下文容器，包含：
-
-| 字段 | 说明 |
-|------|------|
-| `epoch` | 当前 epoch |
-| `global_step` | 全局 step |
-| `batch_idx` | 当前 batch |
-| `optimizer` | 优化器引用 |
-| `manager` | SchemaManager |
-| `cfg` | 配置 |
-| `timer` | 计时器 |
-| `recorder` | 特征记录器 |
-
-### `TrainerDataLoaders` — [`context.py`](../../src/betterbole/core/train/context.py)
+### `TrainerDataLoaders`
 
 ```python
 @dataclass
 class TrainerDataLoaders:
-    train: Iterable[Interaction]   # 训练 DataLoader
-    valid: Iterable[Interaction]   # 验证 DataLoader
-    test: Optional[Iterable[Interaction]]  # 可选测试集
+    train: Iterable[Interaction]
+    valid: Iterable[Interaction]
+    test: Optional[Iterable[Interaction]] = None
 ```
 
-### `TrainerComponents` — [`context.py`](../../src/betterbole/core/train/context.py)
+### `TrainerComponents`
 
 ```python
 @dataclass
 class TrainerComponents:
-    evaluator_manager: EvaluatorManager  # 评估管理器
-    recorder: ExplicitFeatureRecorder    # 特征记录器
-    timer: CudaNamedTimer                # CUDA 计时器
-    early_stepper: Optional[EarlyStopper] # 早停器
+    evaluator_manager: EvaluatorManager
+    recorder: ExplicitFeatureRecorder = ...
+    timer: CudaNamedTimer = ...
+    early_stepper: Optional[EarlyStopper] = None
 ```
 
-### Hooks 协议 — [`hooks.py`](../../src/betterbole/core/train/hooks.py)
+## 4. Hook 协议
 
-模型可以通过实现这些 Protocol 接入训练流程：
+源码在 [`src/betterbole/core/train/hooks.py`](../../src/betterbole/core/train/hooks.py)。
 
-```python
-class CustomTrainStepProtocol(Protocol):
-    def custom_train_step(self, batch_interaction, ctx: TrainContext): ...
+### `CustomTrainStepProtocol`
 
-class TrainerHooksProtocol(Protocol):
-    def on_train_epoch_start(self, ctx: TrainContext): ...
-    def on_train_epoch_end(self, ctx: TrainContext): ...
-    def on_eval_epoch_end(self, metrics, ctx: TrainContext): ...
-```
+实现这个协议后，`BaseTrainer.train_epoch()` 会优先调用你的 `custom_train_step(batch, ctx)`。
 
-### `EarlyStopper` — [`early_stepper.py`](../../src/betterbole/core/train/early_stepper.py)
+### `TrainerHooksProtocol`
 
-自动早停 + 最优模型保存：
+支持三个 hook：
+
+- `on_train_epoch_start(ctx)`
+- `on_train_epoch_end(ctx)`
+- `on_eval_epoch_end(metrics, ctx)`
+
+## 5. `EarlyStopper`
+
+源码在 [`src/betterbole/core/train/early_stepper.py`](../../src/betterbole/core/train/early_stepper.py)。
 
 ```python
 EarlyStopper(patience=5, min_delta=0.0)
-    .step(summary_dict, epoch=epoch)
-    → (is_best, should_stop)
 ```
 
-- 自动识别指标模式：`loss/logloss/mae/mse/rmse` → min 模式，其余 → max 模式
-- 指标优先级：`auc > gauc > ndcg@10 > hr@10 > recall@10 > logloss > loss`
+### 选择指标的规则
+
+`step(summary_dict, epoch=None)` 会从 `summary_dict` 里挑一个指标做 early-stop 依据：
+
+1. 优先看 `overall` / `all` 这类评估器名。
+2. 再按指标名优先级搜索：
+   - `auc`
+   - `gauc`
+   - `ndcg@10`
+   - `ndcg@20`
+   - `ndcg`
+   - `hr@10`
+   - `hr@20`
+   - `hr`
+   - `recall@10`
+   - `recall@20`
+   - `recall`
+   - `logloss`
+   - `loss`
+3. 找不到时退化为该评估器里的第一个指标。
+
+注意：这里的 `recall@k` 只是 `EarlyStopper` 的候选指标名之一，并不代表当前 `evaluate.metrics` 已经实现了 `recall`。
+
+### 模式
+
+- `loss` / `logloss` / `mae` / `mse` / `rmse` 使用 `min` 模式。
+- 其他指标使用 `max` 模式。
+
+### 返回值
+
+`step(...) -> (is_best, should_stop)`
+
+## 6. `BaseTrainer`
+
+源码在 [`src/betterbole/core/train/trainer.py`](../../src/betterbole/core/train/trainer.py)。
+
+### 初始化
+
+```python
+BaseTrainer(
+    model,
+    optimizer,
+    manager,
+    loaders,
+    components,
+    cfg,
+)
+```
+
+### 默认流程
+
+```text
+run()
+  -> train_epoch()
+  -> evaluate_epoch()
+  -> EarlyStopper.step(...)
+  -> save_checkpoint(tag="best", metrics=...)
+```
+
+### 默认训练步
+
+如果模型没有实现 `custom_train_step`，就会走：
+
+```python
+loss = model.calculate_loss(batch)
+loss.backward()
+clip_grad_norm_(...)
+optimizer.step()
+```
+
+### 默认评估步
+
+`evaluate_epoch()` 会：
+
+1. 把 batch 移到 `cfg.device`
+2. 取 `uids = batch[self.manager.uid_field]`
+3. 取 `labels = batch[self.manager.label_field]`
+4. 调 `scores = self.model.predict(batch)`
+5. 调 `self.evaluator.collect(uids, labels, batch, batch_preds_1d=scores)`
+
+这也是为什么 `predict()` 的语义必须和 evaluator 匹配。
+
+### checkpoint
+
+`save_checkpoint()` 只有在 `cfg.ckpt_dir` 非空时才会写文件。
+
+保存字段包括：
+
+- `epoch`
+- `global_step`
+- `model_state_dict`
+- `optimizer_state_dict`
+- `metrics`
+- `experiment_name`
+- `dataset_name`
+
+## 7. 实战注意事项
+
+- `BaseTrainer` 不是 `TrainingTracker` 的封装层，两个系统彼此独立。
+- 如果你想在验证时输出 `logloss`，不要让 `predict()` 返回未 sigmoid 的 logits，除非你自己接受这个误差。
+- 默认 `train_epoch()` 会对 batch 做 `batch.to(cfg.device)`，所以 `Interaction` 必须是可搬运 tensor 容器。

@@ -111,7 +111,6 @@ class STARModel(MSRModel):
             hidden_dims=tower_hidden_dims,
             dropout_rate=tower_dropout_rate,
         )
-
     def encode_features(self, interaction):
         x = self.input_view(interaction)
         return torch.flatten(x, start_dim=1), interaction[self.DOMAIN].long()

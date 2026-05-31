@@ -67,7 +67,6 @@ class SharedBottomModel(MSRModel):
             hidden_dims=tower_hidden_dims,
             dropout_rate=tower_dropout_rate,
         )
-
     def encode_features(self, interaction):
         x = self.input_view(interaction)
         return torch.flatten(x, start_dim=1), interaction[self.DOMAIN].long()
@@ -83,3 +82,88 @@ class SharedBottomModel(MSRModel):
         labels = interaction[self.LABEL].float()
         logits = self.predict(interaction)
         return nn.functional.binary_cross_entropy_with_logits(logits, labels)
+
+
+class SharedBottomLessModel(SharedBottomModel):
+    def __init__(
+            self,
+            manager: SchemaManager,
+            num_domains: int,
+            hidden_dims: Iterable[int] = None,
+            dropout_rate: float = 0.0,
+            activation: str = "relu",
+            batch_norm: bool = True,
+            tower_hidden_dims: Iterable[int] = None,
+            tower_dropout_rate: float = 0.2,
+    ):
+        super().__init__(
+            manager=manager,
+            num_domains=num_domains,
+            hidden_dims=tuple(hidden_dims) if hidden_dims is not None else (1,),
+            dropout_rate=dropout_rate,
+            activation=activation,
+            batch_norm=batch_norm,
+            tower_hidden_dims=tower_hidden_dims,
+            tower_dropout_rate=tower_dropout_rate,
+        )
+        if hidden_dims is None:
+            resolved_hidden_dims = (max(1, int(self.input_dim)),)
+            self.backbone = SharedBottomBackbone(
+                input_dim=self.input_dim,
+                num_domains=num_domains,
+                hidden_dims=resolved_hidden_dims,
+                dropout_rate=dropout_rate,
+                activation=activation,
+                batch_norm=batch_norm,
+            )
+            self.head = DomainTowerHead(
+                num_domains=num_domains,
+                input_dim=self.backbone.output_dim,
+                hidden_dims=tower_hidden_dims,
+                dropout_rate=tower_dropout_rate,
+            )
+
+
+class SharedBottomPlusModel(SharedBottomModel):
+    def __init__(
+            self,
+            manager: SchemaManager,
+            num_domains: int,
+            hidden_dims: Iterable[int] = None,
+            dropout_rate: float = 0.0,
+            activation: str = "relu",
+            batch_norm: bool = True,
+            tower_hidden_dims: Iterable[int] = None,
+            tower_dropout_rate: float = 0.2,
+    ):
+        super().__init__(
+            manager=manager,
+            num_domains=num_domains,
+            hidden_dims=tuple(hidden_dims) if hidden_dims is not None else (1,),
+            dropout_rate=dropout_rate,
+            activation=activation,
+            batch_norm=batch_norm,
+            tower_hidden_dims=tower_hidden_dims,
+            tower_dropout_rate=tower_dropout_rate,
+        )
+        if hidden_dims is None:
+            resolved_hidden_dims = (
+                max(1, int(self.input_dim)),
+                max(1, int(self.input_dim)),
+                max(1, int(self.input_dim) // 2),
+                max(1, int(self.input_dim)),
+            )
+            self.backbone = SharedBottomBackbone(
+                input_dim=self.input_dim,
+                num_domains=num_domains,
+                hidden_dims=resolved_hidden_dims,
+                dropout_rate=dropout_rate,
+                activation=activation,
+                batch_norm=batch_norm,
+            )
+            self.head = DomainTowerHead(
+                num_domains=num_domains,
+                input_dim=self.backbone.output_dim,
+                hidden_dims=tower_hidden_dims,
+                dropout_rate=tower_dropout_rate,
+            )

@@ -205,10 +205,10 @@ class ParamManager:
         return "\n".join(lines)
 
 if __name__ == '__main__':
-    from betterbole.models.backbone import SharedBottomLess
+    from betterbole.models.msr.sharedbottom import SharedBottomLessModel
     manager = ParamManager(ConfigBase) # 必须是出现在ConfigBase通过doc声明的方式才能被探测到
     manager.register("model", {
-        "sharedbottom": SharedBottomLess
+        "sharedbottom": SharedBottomLessModel
     })
     cfg = manager.build(model="sharedbottom")
     print(manager)

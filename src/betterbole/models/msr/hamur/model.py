@@ -132,6 +132,7 @@ class HAMURModel(HAMURBaseModel):
 
         raise ValueError(f"Unsupported HAMUR backbone: {self.backbone}")
 
+
     def forward(self, *args):
         return self.network(*args)
 

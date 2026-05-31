@@ -1,23 +1,43 @@
-# 新增一个 MSR Model 并验证实验
+# 新增一个 MSR 模型并验证
 
-> 适用于 betterbole 的多场景推荐模型体系。目标是把一个新的模型包接入 `models/msr/`，然后直接复用现成实验脚本做验证。
+这份指南对应当前源码里的多场景模型体系，入口以 [`src/betterbole/models/msr/__init__.py`](../../src/betterbole/models/msr/__init__.py) 为准。
 
-## 适用场景
+目标是完成一个最小闭环：
 
-如果你要新增一个 MSR 模型，推荐按下面这个最小闭环走：
+1. 新建模型类。
+2. 注册到 `MODEL_REGISTRY`。
+3. 用当前的 KuaiRand 示例脚本验证能跑通。
 
-1. 在 `src/betterbole/models/msr/` 下新建一个包。
-2. 在 `src/betterbole/models/msr/__init__.py` 里注册新模型。
-3. 直接复用 `@examples/kuairand-1k/kuairan1k.py` 跑实验。
-4. 只修改 `cfg.model`，把模型名切到你刚注册的名字。
+## 1. 先理解现有模型的最小形状
 
-这个流程不要求你改其余实验参数。`@examples/kuairand-1k/kuairan1k.py` 已经搭好了数据、特征、训练器、评估器和保存路径，通常只需要替换 model 名称即可。
+绝大多数 MSR 模型都遵循同一套路：
 
----
+```python
+class SomeModel(MSRModel):
+    def __init__(self, manager, num_domains, ...):
+        super().__init__(manager, num_domains)
+        self.DOMAIN = self.manager.domain_field
+        self.LABEL = self.manager.label_field
+        self.input_view = self.omni_embedding.whole
+        self.input_dim = self.input_view.embedding_dim
+        ...
 
-## 1. 新建模型包
+    def predict(self, interaction):
+        ...
 
-在 `src/betterbole/models/msr/` 下创建一个新目录，例如：
+    def calculate_loss(self, interaction):
+        ...
+```
+
+最值得直接参考的现有实现：
+
+- [`src/betterbole/models/msr/sharedbottom.py`](../../src/betterbole/models/msr/sharedbottom.py)
+- [`src/betterbole/models/msr/mmoe.py`](../../src/betterbole/models/msr/mmoe.py)
+- [`src/betterbole/models/msr/ple/model.py`](../../src/betterbole/models/msr/ple/model.py)
+
+## 2. 新建模型目录
+
+推荐结构：
 
 ```text
 src/betterbole/models/msr/my_model/
@@ -25,129 +45,133 @@ src/betterbole/models/msr/my_model/
   model.py
 ```
 
-建议保持和现有模型一致的结构：
+`__init__.py`
 
-- `model.py` 放模型主体类。
-- `__init__.py` 只负责导出公共类名。
+```python
+from .model import MyModel
 
-如果你的模型还需要额外组件，也可以继续拆分子模块，但对外入口最好统一从 `__init__.py` 暴露。
+__all__ = ["MyModel"]
+```
 
-一个最小模型类通常继承 `MSRModel`，并实现下面这些约定：
+`model.py`
 
-- `self.DOMAIN = self.manager.domain_field`
-- `self.LABEL = self.manager.label_field`
-- `self.input_view = self.omni_embedding.whole`
-- `predict(interaction)`
-- `calculate_loss(interaction)`
+```python
+import torch
+import torch.nn.functional as F
 
-参考现有实现可以直接看：
+from betterbole.models.msr.base import MSRModel
+from betterbole.models.msr.components.heads import DomainTowerHead
+from betterbole.models.utils.general import MLP
 
-- [`src/betterbole/models/msr/ple/model.py`](../../src/betterbole/models/msr/ple/model.py)
-- [`src/betterbole/models/msr/sharedbottom.py`](../../src/betterbole/models/msr/sharedbottom.py)
 
----
+class MyModel(MSRModel):
+    def __init__(self, manager, num_domains, hidden_dims=(128, 64), dropout_rate=0.2):
+        super().__init__(manager, num_domains)
+        self.DOMAIN = self.manager.domain_field
+        self.LABEL = self.manager.label_field
+        self.input_view = self.omni_embedding.whole
+        self.input_dim = self.input_view.embedding_dim
 
-## 2. 在 `__init__.py` 注册
+        self.encoder = MLP(self.input_dim, *hidden_dims, dropout_rate=dropout_rate)
+        self.head = DomainTowerHead(num_domains, input_dim=hidden_dims[-1])
 
-创建好模型类后，要在 `src/betterbole/models/msr/__init__.py` 里做两件事：
+    def encode_features(self, interaction):
+        x = self.input_view(interaction)
+        x = torch.flatten(x, start_dim=1)
+        domain_ids = interaction[self.DOMAIN].long()
+        return x, domain_ids
 
-1. `import` 进来。
-2. 加入 `MODEL_REGISTRY`。
+    def predict(self, interaction):
+        x, domain_ids = self.encode_features(interaction)
+        h = self.encoder(x)
+        return self.head(h, domain_ids)
 
-示例：
+    def calculate_loss(self, interaction):
+        labels = interaction[self.LABEL].float()
+        logits = self.predict(interaction)
+        return F.binary_cross_entropy_with_logits(logits, labels)
+```
+
+## 3. 注册到 `MODEL_REGISTRY`
+
+编辑 [`src/betterbole/models/msr/__init__.py`](../../src/betterbole/models/msr/__init__.py)：
 
 ```python
 from betterbole.models.msr.my_model import MyModel
 
-MODEL_REGISTRY["my_model"] = MyModel
-```
-
-更推荐直接按照现有风格一次性维护注册表，例如：
-
-```python
 MODEL_REGISTRY = {
     ...
     "my_model": MyModel,
 }
 ```
 
-注册名就是后面实验脚本里要填的 `cfg.model` 值。建议使用小写、下划线风格，避免大小写混淆。
-
----
-
-## 3. 直接复用 KuaiRand 实验脚本
-
-实验入口已经在这里：
-
-- [`@examples/kuairand-1k/kuairan1k.py`](../../../@examples/kuairand-1k/kuairan1k.py)
-
-这个脚本已经完成了：
-
-- 数据读取和 join
-- 特征定义与 `SchemaManager`
-- train/valid/test 切分
-- `ParquetStreamDataset`
-- `EvaluatorManager`
-- `Trainer`
-
-因此，验证新模型时一般不需要改实验配置，只要把这里的模型名换掉：
+然后你就可以这样构造：
 
 ```python
-model: str = "ple_version1"
+from betterbole.models.msr import build_model
+
+model = build_model(manager, num_domains=5, model_cls="my_model")
 ```
 
-改成你注册的新名字，例如：
+## 4. `from_manager()` 的约束
+
+`build_model()` 最终会调用 `MSRModel.from_manager()`。它会做两件事：
+
+- 如果你的 `__init__` 接受 `**kwargs`，那所有额外参数都会透传进去。
+- 如果你的 `__init__` 只声明了部分参数，未声明的参数会被忽略，并触发 warning。
+
+所以模型构造参数最好写得明确，不要依赖隐式吞参。
+
+## 5. 用当前 KuaiRand 示例做验证
+
+当前更接近源码主路径的实验脚本是：
+
+- [`@examples/kuairand-1k/kuairan1k.py`](../../@examples/kuairand-1k/kuairan1k.py)
+
+验证方式最简单的一种是：
+
+1. 把 `cfg.model` 改成你的注册名。
+2. 保持其他训练流程不动。
+3. 直接运行脚本。
+
+如果你只想快速切模型，脚本里真正关键的是这一行：
 
 ```python
-model: str = "my_model"
+model = build_model(manager, num_domains, cfg.model, aux_loss_weight=cfg.aux_loss_weight)
 ```
 
-然后脚本里的这行会自动构建你的模型：
+## 6. 第一轮验证至少检查什么
 
-```python
-model = build_model(manager, num_domains, cfg.model, embed_dim=16, aux_loss_weight=cfg.aux_loss_weight)
-```
+### 结构正确性
 
-只要你的模型已经注册到 `MODEL_REGISTRY`，这里就能直接实例化。
+- 模型能被 `build_model()` 找到。
+- `predict()` 能返回形状为 `[B]` 或 `[B, 1]` 后再 squeeze 成 `[B]` 的张量。
+- `calculate_loss()` 能吃下当前 batch 里的 label。
 
----
+### 数据兼容性
 
-## 4. 验证结果
+- `interaction[self.DOMAIN]` 对应的 domain 字段存在。
+- `self.input_view.embedding_dim` 大于 0。
+- 如果模型需要序列特征，不要默认 `omni_embedding.whole` 会自动把序列拼进去；序列通常要通过 `omni_embedding.seq_groups[...]` 显式取。
 
-跑实验后，重点看三类输出：
+### 评估兼容性
 
-- 训练过程日志，确认模型正常 forward / backward。
-- `EvaluatorManager` 的指标输出，确认 AUC / LogLoss 等结果可读。
-- 训练是否稳定收敛，确认没有 shape mismatch、domain 索引错误、loss 为 `nan` 等问题。
+- 当前 `BaseTrainer.evaluate_epoch()` 会把 `predict()` 的输出直接送到 evaluator。
+- 如果你要算 `logloss`，`predict()` 最好返回概率值，或者你自己覆写 `predict_step()`。
+- 只算 `auc` 时，raw logits 通常也能用。
 
-建议至少做下面这几个检查：
+## 7. 推荐的调试顺序
 
-1. 启动后能成功完成 `SchemaManager.fit()` 和 `save_as_dataset()`。
-2. `build_model(...)` 能成功返回你的模型实例。
-3. 第一轮训练能正常跑完，没有维度错误。
-4. 验证阶段能输出整体指标和分场景指标。
+1. 先用很小的 batch 跑一个 forward。
+2. 再确认 loss.backward() 没有 shape / dtype 错误。
+3. 再跑完整个 `train_epoch()`。
+4. 最后验证 `evaluate_epoch()` 和 `EarlyStopper` 没问题。
 
-如果你是第一次接入新模型，优先保证“能跑通 + 指标能出”，再做结构调参和性能优化。
+## 8. 一份最小检查清单
 
----
-
-## 5. 最小检查清单
-
-- 新模型包已创建在 `src/betterbole/models/msr/<your_model>/`
-- 新模型类已在 `src/betterbole/models/msr/__init__.py` 注册
-- `cfg.model` 已改成注册名
-- `@examples/kuairand-1k/kuairan1k.py` 可直接运行
-- 训练日志和验证指标正常输出
-
----
-
-## 6. 推荐参考顺序
-
-如果你想快速抄一个可运行模板，建议按这个顺序看：
-
-1. [`src/betterbole/models/msr/base.py`](../../src/betterbole/models/msr/base.py)
-2. [`src/betterbole/models/msr/ple/model.py`](../../src/betterbole/models/msr/ple/model.py)
-3. [`src/betterbole/models/msr/__init__.py`](../../src/betterbole/models/msr/__init__.py)
-4. [`@examples/kuairand-1k/kuairan1k.py`](../../../@examples/kuairand-1k/kuairan1k.py)
-
-这四个文件基本覆盖了“模型定义 -> 注册 -> 实验验证”的完整闭环。
+- 新模型目录存在且可导入。
+- `MODEL_REGISTRY` 已注册。
+- `cfg.model` 已切到新名字。
+- `build_model(...)` 返回的是你的类实例。
+- 第一轮训练和验证都能结束。
+- 输出指标字典不为空。

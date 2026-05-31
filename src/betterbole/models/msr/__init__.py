@@ -3,28 +3,31 @@ from typing import Dict, Type, Union
 from betterbole.emb import SchemaManager
 from betterbole.models.msr.automtl import AutoMTLModel
 from betterbole.models.msr.base import MSRModel
-from betterbole.models.msr.crocodile import CrocodileModel
 from betterbole.models.msr.crocodile_v1 import CrocodileV1Model
 from betterbole.models.msr.feature_gate import FeatureGateModel
 from betterbole.models.msr.hamur import HAMURModel
 from betterbole.models.msr.hierrec import HierRec
-from betterbole.models.msr.m3oe import M3oEModel, M3oEVersion1Model, M3oEVersion2Model
 from betterbole.models.msr.m2m import M2MModel
+from betterbole.models.msr.m3oe import M3oEModel, M3oEVersion1Model, M3oEVersion2Model
 from betterbole.models.msr.mmoe import MMoEModel
+from betterbole.models.msr.multiemb import MultiEmbModel
 from betterbole.models.msr.pareto import ParetoModel
 from betterbole.models.msr.pepnet import EPNetModel, PEPNetModel, PPNetModel
-from betterbole.models.msr.ple import PLEModel, PLEVesion1Model, PLEVersion1, PLEVersion1Model
+from betterbole.models.msr.ple import PLEModel, PLEVersion1Model
 from betterbole.models.msr.riple import RIPLEModel
-from betterbole.models.msr.sharedbottom import SharedBottomModel
+from betterbole.models.msr.sdsp import SDSPMMoEModel, SDSPPLEModel
+from betterbole.models.msr.sharedbottom import SharedBottomLessModel, SharedBottomModel, SharedBottomPlusModel
+from betterbole.models.msr.ssim import SSIMModel
 from betterbole.models.msr.star import STARModel
 
 
 MODEL_REGISTRY: Dict[str, Type[MSRModel]] = {
     "sharedbottom": SharedBottomModel,
+    "sharedbottom_less": SharedBottomLessModel,
+    "sharedbottom_plus": SharedBottomPlusModel,
     "mmoe": MMoEModel,
     "ple": PLEModel,
     "ple_v1": PLEVersion1Model,
-    "ple_version1": PLEVersion1Model,
     "star": STARModel,
     "m3oe": M3oEModel,
     "m3oe_v1": M3oEVersion1Model,
@@ -34,14 +37,28 @@ MODEL_REGISTRY: Dict[str, Type[MSRModel]] = {
     "epnet": EPNetModel,
     "pepnet": PEPNetModel,
     "feature_gate": FeatureGateModel,
-    "crocodile": CrocodileModel,
-    "crocodile_v1": CrocodileV1Model,
+    "crocodile": CrocodileV1Model,
     "pareto": ParetoModel,
     "hierrec": HierRec,
     "automtl": AutoMTLModel,
     "riple": RIPLEModel,
     "hamur": HAMURModel,
+    "sdsp_ple": SDSPPLEModel,
+    "sdsp_mmoe": SDSPMMoEModel,
+    "ssim": SSIMModel,
+    "multiemb": MultiEmbModel,
 }
+
+def update_register(**kwargs) -> Dict[str, Type[MSRModel]]:
+    for name, model_cls in kwargs.items():
+        if not isinstance(name, str):
+            raise TypeError(f"Model registry key must be str, got {type(name)}")
+        if not isinstance(model_cls, type) or not issubclass(model_cls, MSRModel):
+            raise TypeError(
+                f"Model registry value for '{name}' must be an MSRModel subclass, got {model_cls!r}"
+            )
+        MODEL_REGISTRY[name.lower()] = model_cls
+    return MODEL_REGISTRY
 
 
 def build_model(
@@ -62,24 +79,30 @@ def build_model(
 
 
 __all__ = [
+    "MODEL_REGISTRY",
+    "update_register",
+    "build_model",
     "HierRec",
     "SharedBottomModel",
+    "SharedBottomLessModel",
+    "SharedBottomPlusModel",
     "MMoEModel",
     "PLEModel",
     "PLEVersion1Model",
-    "PLEVersion1",
-    "PLEVesion1Model",
     "STARModel",
     "M3oEModel",
     "M3oEVersion1Model",
     "M3oEVersion2Model",
     "RIPLEModel",
+    "SDSPMMoEModel",
+    "SDSPPLEModel",
+    "SSIMModel",
+    "MultiEmbModel",
     "M2MModel",
     "PPNetModel",
     "EPNetModel",
     "PEPNetModel",
     "FeatureGateModel",
-    "CrocodileModel",
     "CrocodileV1Model",
     "ParetoModel",
     "AutoMTLModel",

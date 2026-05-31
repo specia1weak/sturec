@@ -1,4 +1,4 @@
-from typing import Iterable
+from typing import Iterable, Optional, Sequence, Tuple
 
 import torch
 from torch import nn
@@ -108,24 +108,24 @@ class HierRecExplicitGenerator(nn.Module):
 
 
 class HierRec(MSRModel):
-    def __init__(self, manager: SchemaManager, num_domains: int,
-                 embed_dim: int = 32,
-                 hidden_dims: Iterable[int] = (64, 16, 64, 64),
-                 im_num: int = 4,
-                 dropout: float = 0.2):
+    def __init__(
+            self,
+            manager: SchemaManager,
+            num_domains: int,
+            embed_dim: int = 32,
+            hidden_dims: Optional[Iterable[int]] = None,
+            mlp_dims: Optional[Sequence[Sequence[int]]] = None,
+            im_num: int = 4,
+            dropout: float = 0.2,
+    ):
         super().__init__(manager, num_domains)
         self.DOMAIN = self.manager.domain_field
         self.LABEL = self.manager.label_field
         self.embed_dim = embed_dim
         self.im_num = im_num
-        self.hidden_dims = tuple(hidden_dims)
-        if len(self.hidden_dims) != 4:
-            raise ValueError(
-                "HierRec hidden_dims must contain exactly 4 values: "
-                "(dnn1_dim, shared_bottleneck_dim, shared_output_dim, head_hidden_dim)."
-            )
-        dnn1_dim, shared_bottleneck_dim, shared_output_dim, head_hidden_dim = self.hidden_dims
-        self.shared_output_dim = shared_output_dim
+
+        self.mlp_dims = self._normalize_mlp_dims(mlp_dims=mlp_dims, hidden_dims=hidden_dims)
+        self.shared_output_dim = int(self.mlp_dims[2][-1])
 
         self.domain_fields = set(manager.domain_fields)
         self.feature_settings = [
@@ -151,13 +151,18 @@ class HierRec(MSRModel):
 
         self.num_fields = len(self.feature_settings)
         self.emb_all_dim = embed_dim * self.num_fields
+        self.domain_embedding = nn.Embedding(num_domains, embed_dim)
+        nn.init.xavier_uniform_(self.domain_embedding.weight)
 
-        # Keep a flat config surface while mapping to the original HierRec stage semantics.
-        self.dnn1 = HierRecMLP(self.emb_all_dim, [dnn1_dim], dropout=dropout)
+        self.dnn1 = HierRecMLP(self.emb_all_dim, self.mlp_dims[0], dropout=dropout)
         self.explicit = HierRecExplicitGenerator(
             embed_dim=embed_dim,
             num_fields=self.num_fields,
-            inout_dim=[dnn1_dim, shared_bottleneck_dim, shared_output_dim],
+            inout_dim=[
+                int(self.mlp_dims[0][-1]),
+                int(self.mlp_dims[1][0]),
+                int(self.mlp_dims[1][1]),
+            ],
             im_num=im_num,
             dropout=dropout,
         )
@@ -165,11 +170,58 @@ class HierRec(MSRModel):
             im_num=im_num,
             embed_dim=embed_dim,
             num_fields=self.num_fields,
-            inout_dim=[shared_output_dim, shared_bottleneck_dim, shared_output_dim],
+            inout_dim=[
+                int(self.mlp_dims[1][1]),
+                int(self.mlp_dims[2][0]),
+                int(self.mlp_dims[2][1]),
+            ],
             dropout=dropout,
         )
-        self.out_trans = HierRecMLP(im_num * shared_output_dim, [shared_output_dim], dropout=dropout)
-        self.dnn3 = HierRecMLP(shared_output_dim, [head_hidden_dim], dropout=dropout, output_layer=True)
+        self.out_trans = HierRecMLP(
+            im_num * int(self.mlp_dims[2][1]),
+            [int(self.mlp_dims[2][1])],
+            dropout=dropout,
+        )
+        self.dnn3 = HierRecMLP(
+            int(self.mlp_dims[2][1]),
+            self.mlp_dims[3],
+            dropout=dropout,
+            output_layer=True,
+        )
+
+    @staticmethod
+    def _normalize_mlp_dims(
+            mlp_dims: Optional[Sequence[Sequence[int]]],
+            hidden_dims: Optional[Iterable[int]],
+    ) -> Tuple[Tuple[int, ...], Tuple[int, ...], Tuple[int, ...], Tuple[int, ...]]:
+        if mlp_dims is None:
+            if hidden_dims is None:
+                mlp_dims = ((64,), (16, 64), (16, 64), (64,))
+            else:
+                flat_hidden_dims = tuple(int(dim) for dim in hidden_dims)
+                if len(flat_hidden_dims) != 4:
+                    raise ValueError(
+                        "HierRec hidden_dims must contain exactly 4 values: "
+                        "(dnn1_dim, shared_bottleneck_dim, shared_output_dim, head_hidden_dim)."
+                    )
+                mlp_dims = (
+                    (flat_hidden_dims[0],),
+                    (flat_hidden_dims[1], flat_hidden_dims[2]),
+                    (flat_hidden_dims[1], flat_hidden_dims[2]),
+                    (flat_hidden_dims[3],),
+                )
+
+        normalized = []
+        for idx, dims in enumerate(mlp_dims):
+            current = tuple(int(dim) for dim in dims)
+            if not current:
+                raise ValueError(f"HierRec mlp_dims[{idx}] can not be empty.")
+            normalized.append(current)
+        if len(normalized) != 4:
+            raise ValueError("HierRec mlp_dims must have 4 stages: [dnn1, explicit, implicit, head].")
+        if len(normalized[1]) != 2 or len(normalized[2]) != 2:
+            raise ValueError("HierRec explicit/implicit stage dims must both have exactly 2 values.")
+        return tuple(normalized)  # type: ignore[return-value]
 
     def concat_embed_input_fields(self, interaction) -> torch.Tensor:
         named_embs = self.omni_embedding.whole_without_domain(interaction, split_by="name")
@@ -180,8 +232,8 @@ class HierRec(MSRModel):
         return torch.cat(stacked, dim=1)
 
     def get_domain_embedding(self, interaction) -> torch.Tensor:
-        domain_emb = self.omni_embedding.domain_id(interaction)
-        return domain_emb.reshape(domain_emb.size(0), -1)
+        domain_ids = interaction[self.DOMAIN].long().view(-1)
+        return self.domain_embedding(domain_ids)
 
     def forward(self, emb_x: torch.Tensor, domain_emb: torch.Tensor) -> torch.Tensor:
         explicit_net_1, explicit_net_2, explicit_bias_1, explicit_bias_2, implicit_para = self.explicit(domain_emb)

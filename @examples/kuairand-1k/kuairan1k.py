@@ -1,6 +1,6 @@
 import time
 from dataclasses import dataclass
-from typing import Iterable
+from typing import Dict
 
 import torch
 
@@ -17,19 +17,20 @@ from betterbole.evaluate.evaluator import Evaluator
 from betterbole.evaluate.manager import EvaluatorManager, DomainFilter
 from betterbole.experiment.param import ConfigBase, ParamManager
 from betterbole.models.base import BaseModel
-from betterbole.models.msr import HierRec, build_model
+from betterbole.models.msr import build_model, update_register
 from betterbole.utils.optimize import split_params_by_decay
 from betterbole.experiment import change_root_workdir
-from betterbole.utils.sequential import extract_history_sequences
+from custom_models import CUSTOM_MODEL_REGISTRY
 
 change_root_workdir()
+update_register(**CUSTOM_MODEL_REGISTRY)
 
 @dataclass
 class KuairandConfig(ConfigBase):
     dataset_name: str = "kuairand-rand"
     seed: int = 2026
     device: str = "cuda"
-    max_epochs: int = 1
+    max_epochs: int = 3
     ckpt_dir: str = "" # 不保存ckpt
 
     batch_size: int = 4096
@@ -37,15 +38,24 @@ class KuairandConfig(ConfigBase):
     side_emb: int = 32
     shuffle_buffer_size: int = 2000000
 
-    model: str = "crocodile_v1"
-    aux_loss_weight: float = 0.5
+    model: str = "multiemb"
     log_name: str = "test.log"
+    weight_decay: float = 1e-6
+
+
+MODEL_KWARGS: Dict[str, Dict[str, object]] = {
+    "ple": {
+        "num_levels": 2,
+        "num_shared_experts": 1,
+    },
+}
 
 pm = ParamManager(KuairandConfig)
 cfg: KuairandConfig = pm.build(experiment_name=KuairandConfig.model)
 
 print(cfg)
 time.sleep(2)
+
 
 class KuairandTrainer(BaseTrainer):
     def __init__(self, model: BaseModel, optimizer: torch.optim.Optimizer, manager: SchemaManager,
@@ -126,12 +136,6 @@ if __name__ == '__main__':
     whole_lf = whole_lf.filter(pl.col("tab").is_in(top_5_list))
     print(top_5_list)
 
-    ## 序列处理
-    # extract_history_sequences(whole_lf, max_seq_len=20, user_col="user_id", time_col="time_ms", feature_mapping={
-    #     "video_id": "video_id_seq",
-    #
-    # }, seq_len_col="seq_len")
-
     ## 增加新特征
     parsed_date = pl.col("date").cast(pl.Utf8).str.to_date("%Y%m%d", strict=False)
     # whole_lf = whole_lf.with_columns(
@@ -155,7 +159,6 @@ if __name__ == '__main__':
     train_lf = manager.transform(train_raw)
     valid_lf = manager.transform(valid_raw)
     test_lf = manager.transform(test_raw)
-
     print(train_lf.select("date").head(5).collect())
     print(valid_lf.select("date").head(5).collect())
     train_path, valid_path, test_path = manager.save_as_dataset(train_lf, valid_lf, test_lf)
@@ -163,7 +166,8 @@ if __name__ == '__main__':
     # ======================== 模型在这里 ======================================== #
     # num_domains = manager.get_setting(manager.domain_field).vocab_size
     num_domains = 5
-    model = build_model(manager, num_domains, cfg.model, aux_loss_weight=cfg.aux_loss_weight)
+    model_kwargs = MODEL_KWARGS.get(cfg.model, {})
+    model = build_model(manager, num_domains, cfg.model, **model_kwargs)
     # ======================== 数据处理完成 准备trainer信息 ======================== #
     ps_dataset = ParquetStreamDataset(train_path, manager, batch_size=cfg.batch_size, shuffle=False, drop_last=False) # 文件已全局打乱
     ps_valid = ParquetStreamDataset(test_path, manager, batch_size=4096 * 2, shuffle=False, drop_last=False) # 不能被shuffle
@@ -180,7 +184,7 @@ if __name__ == '__main__':
             filter_fn=DomainFilter(manager.domain_field, domain),
         )
 
-    params = split_params_by_decay(model.named_parameters(), weight_decay=0, no_decay_keywords=["embedding"])
+    params = split_params_by_decay(model.named_parameters(), weight_decay=cfg.weight_decay, no_decay_keywords=["embedding"])
     optimizer = torch.optim.Adam(params, lr=1e-3)
     trainer = KuairandTrainer(
         model, optimizer, manager, TrainerDataLoaders(
