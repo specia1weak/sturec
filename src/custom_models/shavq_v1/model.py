@@ -321,7 +321,7 @@ class SHAVQV1Model(MSRModel):
         if self.training and not self._is_codebook_ready():
             self._collect_warmup_vectors(z)
 
-        if (not self.training) and (not self._is_codebook_ready()) and self._warmup_vector_count >= self.codebook_size:
+        if (not self.training) and (not self._is_codebook_ready()) and self._warmup_vector_count >= self.warmup_samples:
             self._initialize_codebook_from_warmup(device=z.device)
 
         if self._is_codebook_ready():

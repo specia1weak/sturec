@@ -167,6 +167,33 @@ class VQShareModel(MSRModel):
         self._observatory_steps: List[int] = []
         self._observatory_scalar_history: Dict[str, List[float]] = {}
 
+    def component_logits(self) -> Dict[str, torch.Tensor]:
+        if not self._latest_debug:
+            raise RuntimeError("No debug state available. Run a forward pass first.")
+
+        shared_logits = self._latest_debug["shared_logits"]
+        specific_logits = self._latest_debug["specific_logits"]
+        return {
+            "full": shared_logits + specific_logits,
+            "shared_only": shared_logits,
+            "specific_only": specific_logits,
+        }
+
+    def predict_with_mode(self, interaction, mode: str = "full") -> torch.Tensor:
+        x, domain_ids, domain_context = self.encode_features(interaction)
+        logits, _, _ = self._forward_impl(
+            x,
+            domain_ids,
+            domain_context,
+            compute_aux_losses=False,
+        )
+        if mode == "full":
+            return logits
+        components = self.component_logits()
+        if mode not in components:
+            raise ValueError(f"Unsupported prediction mode: {mode}")
+        return components[mode]
+
 
 
     def _is_codebook_ready(self) -> bool:

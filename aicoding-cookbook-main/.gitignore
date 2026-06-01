@@ -1,0 +1,8 @@
+# Local secrets (DO NOT COMMIT)
+augment mcp setting/key.txt
+
+
+# Python cache
+__pycache__/
+*.pyc
+

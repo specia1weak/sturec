@@ -48,6 +48,64 @@ MODEL_KWARGS: Dict[str, Dict[str, object]] = {
         "num_levels": 2,
         "num_shared_experts": 1,
     },
+    "shavq_md_ste_v2_s090_f000": {
+        "self_share_prob": 0.90,
+        "foreign_vq_weight": 0.00,
+    },
+    "shavq_md_ste_v2_s090_f005": {
+        "self_share_prob": 0.90,
+        "foreign_vq_weight": 0.05,
+    },
+    "shavq_md_ste_v2_s095_f000": {
+        "self_share_prob": 0.95,
+        "foreign_vq_weight": 0.00,
+    },
+    "shavq_md_ste_v2_s095_f005": {
+        "self_share_prob": 0.95,
+        "foreign_vq_weight": 0.05,
+    },
+    "shavq_md_ste_v3_r001": {
+        "self_share_prob": 0.90,
+        "foreign_vq_weight": 0.00,
+        "residual_diversity_weight": 0.01,
+    },
+    "shavq_md_ste_v3_r005": {
+        "self_share_prob": 0.90,
+        "foreign_vq_weight": 0.00,
+        "residual_diversity_weight": 0.05,
+    },
+    "shavq_md_ste_v3_r001_k128": {
+        "self_share_prob": 0.90,
+        "foreign_vq_weight": 0.00,
+        "residual_diversity_weight": 0.01,
+        "codebook_size": 128,
+        "warmup_samples": 8192,
+    },
+    "shavq_h2_ste_v1": {
+        "warmup_samples": 8192,
+        "shared_warmup_samples": 8192,
+        "specific_warmup_samples": 8192,
+    },
+    "shavq_h2_ste_v1_r001": {
+        "warmup_samples": 8192,
+        "shared_warmup_samples": 8192,
+        "specific_warmup_samples": 8192,
+        "residual_diversity_weight": 0.01,
+    },
+    "shavq_h2_ste_v1_r001_b050": {
+        "warmup_samples": 8192,
+        "shared_warmup_samples": 8192,
+        "specific_warmup_samples": 8192,
+        "residual_diversity_weight": 0.01,
+        "specific_residual_scale": 0.5,
+    },
+    "shavq_h2_ste_v1_r001_fuse": {
+        "warmup_samples": 8192,
+        "shared_warmup_samples": 8192,
+        "specific_warmup_samples": 8192,
+        "residual_diversity_weight": 0.01,
+        "specific_quantized_fusion": True,
+    },
 }
 
 pm = ParamManager(KuairandConfig)
@@ -167,6 +225,8 @@ if __name__ == '__main__':
     # num_domains = manager.get_setting(manager.domain_field).vocab_size
     num_domains = 5
     model_kwargs = MODEL_KWARGS.get(cfg.model, {})
+    if getattr(cfg, "extras", None):
+        model_kwargs = {**model_kwargs, **cfg.extras}
     model = build_model(manager, num_domains, cfg.model, **model_kwargs)
     # ======================== 数据处理完成 准备trainer信息 ======================== #
     ps_dataset = ParquetStreamDataset(train_path, manager, batch_size=cfg.batch_size, shuffle=False, drop_last=False) # 文件已全局打乱

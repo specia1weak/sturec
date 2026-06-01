@@ -1,0 +1,106 @@
+[
+    {
+        "type": "SPARSE",
+        "field_name": "user_id",
+        "embedding_size": 8,
+        "num_embeddings": 6,
+        "vocab_size": 3,
+        "feature_source": "USER_ID",
+        "is_fitted": true,
+        "padding_zero": true,
+        "use_oov": true,
+        "vocab": {
+            "u1": 1,
+            "u2": 2,
+            "u3": 3
+        },
+        "oov_idx": 5,
+        "min_freq": 1,
+        "use_null": true,
+        "null_idx": 4,
+        "fill_null": "null"
+    },
+    {
+        "type": "SPARSE",
+        "field_name": "item_id",
+        "embedding_size": 8,
+        "num_embeddings": 6,
+        "vocab_size": 3,
+        "feature_source": "ITEM_ID",
+        "is_fitted": true,
+        "padding_zero": true,
+        "use_oov": true,
+        "vocab": {
+            "i1": 1,
+            "i2": 2,
+            "i3": 3
+        },
+        "oov_idx": 5,
+        "min_freq": 1,
+        "use_null": true,
+        "null_idx": 4,
+        "fill_null": "null"
+    },
+    {
+        "type": "SPARSE",
+        "field_name": "tab",
+        "embedding_size": 4,
+        "num_embeddings": 2,
+        "vocab_size": 2,
+        "feature_source": "INTERACTION",
+        "is_fitted": true,
+        "padding_zero": false,
+        "use_oov": false,
+        "vocab": {
+            "0": 0,
+            "1": 1
+        },
+        "oov_idx": -1,
+        "min_freq": 1,
+        "use_null": false,
+        "null_idx": -1,
+        "fill_null": "null"
+    },
+    {
+        "type": "SPARSE",
+        "field_name": "user_group",
+        "embedding_size": 4,
+        "num_embeddings": 6,
+        "vocab_size": 3,
+        "feature_source": "USER",
+        "is_fitted": true,
+        "padding_zero": true,
+        "use_oov": true,
+        "vocab": {
+            "a": 1,
+            "b": 2,
+            "c": 3
+        },
+        "oov_idx": 5,
+        "min_freq": 1,
+        "use_null": true,
+        "null_idx": 4,
+        "fill_null": "null"
+    },
+    {
+        "type": "SPARSE",
+        "field_name": "item_group",
+        "embedding_size": 4,
+        "num_embeddings": 6,
+        "vocab_size": 3,
+        "feature_source": "ITEM",
+        "is_fitted": true,
+        "padding_zero": true,
+        "use_oov": true,
+        "vocab": {
+            "x": 1,
+            "y": 2,
+            "z": 3
+        },
+        "oov_idx": 5,
+        "min_freq": 1,
+        "use_null": true,
+        "null_idx": 4,
+        "fill_null": "null"
+    }
+]
